@@ -1,53 +1,45 @@
+use std::collections::{BinaryHeap, HashMap};
+use std::convert::{TryFrom, TryInto};
+use std::fmt;
+use std::sync::atomic::AtomicU64;
+
+use itertools::Itertools;
+use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+use near_contract_standards::non_fungible_token::{Token, TokenId};
+use near_contract_standards::non_fungible_token::metadata::{
+    NFT_METADATA_SPEC, NFTContractMetadata, NonFungibleTokenMetadataProvider, TokenMetadata,
+};
+use near_contract_standards::non_fungible_token::NonFungibleToken;
+use near_sdk::{AccountId, BorshStorageKey, env, log, near_bindgen, PanicOnDefault, Promise, PromiseOrValue, Timestamp};
+use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::borsh::maybestd::sync::atomic::{AtomicUsize, Ordering};
+use near_sdk::collections::{LazyOption, LookupMap, TreeMap, UnorderedMap, UnorderedSet, Vector};
+use near_sdk::json_types::{U128, U64, ValidAccountId};
+use near_sdk::serde::{Deserialize, Serialize};
+
+use crate::accounts::Account;
+use crate::prize::Prize;
+use crate::prize_pool::{PoolId, PrizePool};
+
 mod prize;
 mod prize_pool;
 mod accounts;
 mod utils;
 
-use std::collections::HashMap;
-use near_contract_standards::non_fungible_token::metadata::{
-    NFTContractMetadata, NonFungibleTokenMetadataProvider, TokenMetadata, NFT_METADATA_SPEC,
-};
-use near_contract_standards::non_fungible_token::{Token, TokenId};
-use near_contract_standards::non_fungible_token::NonFungibleToken;
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption, LookupMap, Vector, UnorderedMap, UnorderedSet, TreeMap};
-use near_sdk::json_types::{U128, U64, ValidAccountId};
-use near_sdk::{env, near_bindgen, AccountId, BorshStorageKey, PanicOnDefault, Promise, PromiseOrValue, log};
-use crate::prize::{Prize};
-use std::convert::{TryFrom,TryInto};
-use std::fmt;
-use itertools::Itertools;
-use crate::prize_pool::PrizePool;
-use near_sdk::borsh::maybestd::sync::atomic::{Ordering, AtomicUsize};
-use std::sync::atomic::AtomicU64;
-use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
-use crate::accounts::Account;
-use near_sdk::serde::{Deserialize, Serialize};
-
 near_sdk::setup_alloc!();
 
-pub type CreateId = AccountId;
 pub type NonFungibleTokenId = String;
 pub type FungibleTokenId = AccountId;
-
-pub const WRAP_NEAR: &str = if env!("NEAR_ENV").eq("testnet") {"wrap.testnet"} else { "wrap.near" };
 
 #[derive(BorshStorageKey, BorshSerialize)]
 pub(crate) enum StorageKey {
     Accounts,
     PrizePools,
-    OwnPool,
-    OwnPools {account_id: AccountId},
     AccountTokens {account_id: AccountId},
     AccountPools {account_id: AccountId},
-    AccountHistory {account_id: AccountId},
-    AccountCreatedPools {account_id: AccountId},
 }
-pub fn next_id()->u64 {
-    static ID: AtomicU64= AtomicU64::new(0);
-    ID.fetch_add(1,Ordering::SeqCst);
-    ID.load(Ordering::Relaxed)
-}
+// static ID: AtomicU64= AtomicU64::new(0);
+
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[serde(crate = "near_sdk::serde")]
@@ -65,33 +57,62 @@ impl fmt::Display for RunningState {
     }
 }
 
+#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+pub struct PrizePoolHeap(Timestamp,PoolId);
+impl Eq for PrizePoolHeap {}
+
+impl PartialEq<Self> for PrizePoolHeap {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)&&self.1.eq(&other.1)
+    }
+}
+
+impl PartialOrd<Self> for PrizePoolHeap {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PrizePoolHeap {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     pub accounts: LookupMap<AccountId, Account>,
-    pub prize_pools: UnorderedMap<u64,PrizePool>,
-    // who own pools
+    pub prize_pools: UnorderedMap<PoolId,PrizePool>,
+    pub pool_queue: BinaryHeap<PrizePoolHeap>, // who own pools
+    pub pool_id: u64
     // pub own_pools: LookupMap<AccountId, UnorderedSet<u64>>
 }
 
+
 #[near_bindgen]
 impl Contract {
+
+    #[private]
+    pub fn next_id(&mut self)->u64{
+        self.pool_id=self.pool_id+1;
+        return self.pool_id
+    }
 
     #[init]
     pub fn new() -> Self {
         Self{
             accounts: LookupMap::new(StorageKey::Accounts),
             prize_pools: UnorderedMap::new(StorageKey::PrizePools),
+            pool_queue: BinaryHeap::new(),
+            pool_id: 0
         }
     }
 
-    pub fn clear(&mut self) {
-        self.accounts.clear();
-    }
-
-    pub fn get_id(&self)-> U64 {
-        return next_id().into();
-    }
+    // pub fn get_id(&self)-> U64 {
+    //     return next_id().into();
+    // }
 }
 
 #[near_bindgen]
@@ -103,7 +124,7 @@ impl FungibleTokenReceiver for Contract {
         amount: U128,
         msg: String,
     ) -> PromiseOrValue<U128> {
-        log!("ft on transfer");
+        log!("ft on transfer,sender_id is {},amount is {},msg is {}",sender_id,amount.0,msg);
         let token_in = env::predecessor_account_id();
         self.internal_deposit(sender_id.as_ref(), &token_in, amount.into());
         PromiseOrValue::Value(U128(0))
@@ -113,15 +134,20 @@ impl FungibleTokenReceiver for Contract {
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
-    use crate::prize::{PrizeToken};
-    use super::*;
-    use near_sdk::MockedBlockchain;
     use near_sdk::{testing_env, VMContext};
+    use near_sdk::MockedBlockchain;
     use near_sdk::serde::Serialize;
     use near_sdk::serde_json::Result;
     use near_sdk::test_utils::{accounts, VMContextBuilder};
+
     use accounts::Account;
-    // use crate::prize::PrizeToken;
+
+    use crate::prize::{FtPrize, PrizeToken};
+    use crate::utils::ONE_YOCTO;
+
+    use super::*;
+
+// use crate::prize::PrizeToken;
 
     fn get_context(input: Vec<u8>, is_view: bool) -> VMContext {
         VMContext {
@@ -146,7 +172,9 @@ mod tests {
 
     fn setup_contract() -> (VMContextBuilder, Contract) {
         let mut context = VMContextBuilder::new();
-        testing_env!(context.predecessor_account_id(accounts(1)).build());
+        testing_env!(context.predecessor_account_id(accounts(0)).build());
+        testing_env!(context.attached_deposit(ONE_YOCTO).build());
+        testing_env!(context.block_timestamp(1638790720000).build());
         let contract = Contract::new();
         (context, contract)
     }
@@ -177,15 +205,14 @@ mod tests {
     #[test]
     fn deposit_ft() {
         let (mut context, mut contract) = setup_contract();
-        contract.ft_on_transfer(accounts(0),123.into(),"".to_string());
+        contract.ft_on_transfer(accounts(1),123.into(),"".to_string());
         // println!("{}",contract.accounts.get(accounts(0).as_ref()).unwrap());
-        println!("{}",near_sdk::serde_json::to_string(&contract.view_account_balance(accounts(0))).unwrap());
+        println!("{}",near_sdk::serde_json::to_string(&contract.view_account_balance(accounts(1))).unwrap());
     }
 
     #[test]
-    fn test() {
-        let env = env!("RUST_ENV");
-        println!("{}", env);
+    fn next_id_test() {
+
     }
 
     // #[test]
@@ -196,12 +223,34 @@ mod tests {
     //     contract.withdraw_ft()
     // }
 
-    fn view_prizes() {
-        let context = get_context(vec![], false);
+    const  WRAP_TOKEN: &str = "wrap.testnet";
+    fn init_account(contract: &mut Contract) {
+        let mut account = Account::new(accounts(0).as_ref());
+        account.fts.insert(&WRAP_TOKEN.to_string(),&100000000000000000000000000);
+        contract.accounts.insert(accounts(0).as_ref(),&account);
     }
-
-    fn delete_prize() {
-        let context = get_context(vec![], false);
+    #[test]
+    fn create_pool_test() {
+        let cover = "https://image.baidu.com/search/detail?ct=503316480&z=undefined&tn=baiduimagedetail&ipn=d&word=%E7%9B%B2%E7%9B%92&step_word=&ie=utf-8&in=&cl=2&lm=-1&st=undefined&hd=undefined&latest=undefined&copyright=undefined&cs=984361998,1860976251&os=3817620326,3085336574&simid=3457770807,390738890&pn=0&rn=1&di=187440&ln=1891&fr=&fmq=1638858788964_R&fm=&ic=undefined&s=undefined&se=&sme=&tab=0&width=undefined&height=undefined&face=undefined&is=0,0&istype=0&ist=&jit=&bdtype=0&spn=0&pi=0&gsm=0&objurl=https%3A%2F%2Fpics6.baidu.com%2Ffeed%2F50da81cb39dbb6fd9a5ecf17fcf5541e962b37d6.jpeg%3Ftoken%3Ddea499573d7eaa207f0e0869ce32382a&rpstart=0&rpnum=0&adpicid=0&nojc=undefined&dyTabStr=MCwzLDIsMSw2LDUsNCw3LDgsOQ%3D%3D";
+        let (mut context, mut contract) = setup_contract();
+        init_account(&mut contract);
+        let ticket_prize: U128 = U128("1000000000000000000000000".parse().unwrap());
+        let fts = vec![FtPrize{ token_id: WRAP_TOKEN.to_string(), amount: U128(1000000000000000000000000u128) }];
+        let pool_id = contract.create_prize_pool("name".into(), "desc".into(),
+                                             cover.into(),
+                                             ticket_prize,
+                                             "wrap.testnet".to_string(),
+                                                 1638790620000,
+                                             Some(fts),
+                                             None);
+        assert_eq!(contract.prize_pools.len(), 1, "奖池集合长度不是1");
+        assert_eq!(contract.pool_queue.len(), 1, "奖池任务队列长度不是1");
+        println!("init account state: {}", near_sdk::serde_json::to_string(&contract.view_account_balance(accounts(0))).unwrap());
+        contract.join_pool(pool_id);
+        contract.touch_pools();
+        println!("pool after prize withdraw: {}", near_sdk::serde_json::to_string(&contract.view_prize_pool(pool_id)).unwrap());
+        println!("account after prize withdraw: {}", near_sdk::serde_json::to_string(&contract.view_account_balance(accounts(0))).unwrap());
+        println!("pool list after prize withdraw: {}", near_sdk::serde_json::to_string(&contract.view_prize_pool_list()).unwrap());
     }
 }
 

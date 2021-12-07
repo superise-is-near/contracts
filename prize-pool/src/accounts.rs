@@ -17,22 +17,12 @@ use itertools::Itertools;
 use std::panic::catch_unwind;
 use near_sdk::env::log;
 
-#[derive(BorshSerialize, BorshDeserialize,Serialize,Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct Record {
-    id: PoolId,
-    end_time: Timestamp,
-    ft_prize: FtPrize,
-}
-
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct Account {
     pub name: AccountId,
     pub fts: UnorderedMap<TokenAccountId, Balance>,
     // pub nfts: UnorderedSet<NftPrize>,
     pub pools: UnorderedSet<u64>,
-    pub history: UnorderedMap<u64, Record>,
-    pub created_pool: UnorderedSet<u64>
 }
 impl fmt::Display for Account {
     // fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -42,16 +32,9 @@ impl fmt::Display for Account {
     //     }
     // }
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        write!(f, "name: {}, ", self.name.to_string());
         let ftsstring = self.fts.iter().map(|(k, v)| format!("{}: {}", k, v)).join(",");
-        for (k,v) in self.fts.iter() {
-
-        }
-        write!(f, "fts: {},", ftsstring);
         let poolsstring = self.pools.iter().map(|k| format!("{}", k)).join(",");
-        write!(f, "pools: {},", poolsstring);
-        let hisotry = self.history.iter().map(|(k, v)| format!("{}: {}", k, to_string(&v).unwrap())).join(",");
-        write!(f, "history: {}", hisotry)
+        write!(f, "{{ name: {{ {} }}, fts: {{ {} }}, pools: {{ {} }} }}",self.name.to_string(),ftsstring,poolsstring)
     }
 }
 
@@ -65,10 +48,6 @@ impl Account {
             pools: UnorderedSet::new(StorageKey::AccountPools {
                 account_id: account_id.clone(),
             }),
-            history: UnorderedMap::new(StorageKey::AccountHistory {
-                account_id: account_id.clone(),
-            }),
-            created_pool: UnorderedSet::new(StorageKey::)
         }
     }
 
@@ -119,9 +98,10 @@ impl Contract {
         token_id: &AccountId,
         amount: Balance,
     ) {
-        self.accounts.get(sender_id)
-            .get_or_insert(&Account::new(&sender_id))
-            .deposit(&token_id,&amount);
+        let mut account = self.accounts.get(&sender_id)
+            .unwrap_or(Account::new(&sender_id));
+            account.deposit(&token_id,&amount);
+        self.accounts.insert(&sender_id,&account);
     }
 
     /// Sends given amount to given user and if it fails, returns it back to user's balance.
@@ -150,13 +130,21 @@ impl Contract {
         ))
     }
 
-    pub fn view_account_balance(&self, account_id: ValidAccountId)->HashMap<AccountId,Balance> {
+    pub fn view_account_balance(&self, account_id: ValidAccountId)->HashMap<AccountId,U128> {
         log!("view_account_balance, {}",account_id);
-        let map = self.accounts.get(&account_id.as_ref()).unwrap_or(&Account::new(&account_id.as_ref())).fts.iter().collect();
-        // let account = self.accounts.get(&account_id.as_ref()).unwrap_or(Account::new(&account_id.as_ref()));
-        // let map = account.fts.iter().collect();
+        let map;
+        if self.accounts.contains_key(&account_id.as_ref()) {
+            map = self.accounts.get(&account_id.as_ref())
+                .unwrap()
+                .fts
+                .iter()
+                .map(|(k,v)|(k,U128(v)))
+                .collect();
+        } else {
+            map = HashMap::new();
+        }
         log!("map: {}",near_sdk::serde_json::to_string(&map).unwrap());
-        return map
+        return map;
     }
 
 

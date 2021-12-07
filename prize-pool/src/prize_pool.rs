@@ -1,15 +1,18 @@
-use std::collections::{HashMap, HashSet};
+use std::borrow::Borrow;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use crate::prize::NftPrize;
 use crate::prize::FtPrize;
 use crate::*;
-use crate::{NonFungibleTokenId, FungibleTokenId, CreateId, Contract, next_id, StorageKey};
+use crate::{NonFungibleTokenId, FungibleTokenId, Contract, StorageKey};
 use crate::prize::{Prize, PrizeToken};
 use near_sdk::{assert_one_yocto, near_bindgen, AccountId, env, Timestamp};
 use near_sdk::json_types::{U64, ValidAccountId};
 use itertools::{Itertools, join};
 use near_sdk::collections::{UnorderedMap, UnorderedSet};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::env::block_timestamp;
 use near_sdk::serde::{Deserialize, Serialize};
+use crate::utils::vec_random;
 
 pub type PoolId = u64;
 
@@ -17,35 +20,41 @@ pub type PoolId = u64;
 #[serde(crate = "near_sdk::serde")]
 pub struct PrizePoolDisplay {
     pub id: PoolId,
-    pub owner_id: CreateId,
+    pub creator_id: AccountId,
     pub name: String,
     pub describe: String,
     pub cover: String,
-    pub begin_time: Timestamp,
     pub end_time: Timestamp,
-    pub joiner_sum: U64,
+    pub joiner_sum: usize,
 }
 
 impl From<PrizePool> for PrizePoolDisplay {
     fn from(prize_pool: PrizePool) -> Self {
         return PrizePoolDisplay {
             id: prize_pool.id,
-            owner_id: prize_pool.owner_id,
+            creator_id: prize_pool.creator_id,
             name: prize_pool.name,
             describe: prize_pool.describe,
             cover: prize_pool.cover,
-            begin_time: prize_pool.begin_time,
             end_time: prize_pool.end_time,
-            joiner_sum: prize_pool.join_accounts.len().into(),
+            joiner_sum: prize_pool.join_accounts.len(),
         };
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(BorshSerialize, BorshDeserialize,Serialize,Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
+pub struct Record {
+    time: Timestamp,
+    ft_prize: FtPrize,
+    receiver: AccountId
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct PrizePool {
     pub id: PoolId,
-    pub owner_id: CreateId,
+    pub creator_id: AccountId,
     pub name: String,
     pub describe: String,
     pub cover: String,
@@ -53,59 +62,45 @@ pub struct PrizePool {
     // the fucking typescript is hard to deserialize rust enum type
     pub ft_prizes: Vec<FtPrize>,
     pub nft_prizes: Vec<NftPrize>,
-    pub ticket_price: u128,
+    pub ticket_price: U128,
+    pub ticket_token_id: TokenId,
     pub join_accounts: HashSet<AccountId>,
-    pub begin_time: Timestamp,
     pub end_time: Timestamp,
-    pub winner_list: HashMap<AccountId, U64>,
+    pub finish: bool,
+    pub records: Vec<Record>
 }
 
 impl PrizePool {
     pub fn new(
         id: PoolId,
-        owner_id: &String,
+        creator_id: &String,
         name: String,
         describe: String,
         cover: String,
         ticket_prize: U128,
+        ticket_token_id: String,
+        end_time: Timestamp,
         ft_prizes: Vec<FtPrize>,
         nft_prizes: Vec<NftPrize>,
     ) -> Self {
         PrizePool {
             id,
-            owner_id: owner_id.into(),
+            creator_id: creator_id.into(),
             name,
             describe,
             cover,
             ft_prizes,
             nft_prizes,
             ticket_price: ticket_prize.into(),
+            ticket_token_id,
             join_accounts: HashSet::new(),
-            begin_time: 0,
-            end_time: 0,
-            winner_list: HashMap::new(),
+            end_time,
+            finish: false,
+            records: vec![]
         }
     }
 
-    //region private
 
-    //endregion
-
-    // pub fn add_ft_prize(&mut self, prize: FtPrize) {
-    //     self.ft_prizes.push(prize);
-    // }
-
-    // pub fn add_nft_prize(&mut self, prize: NftPrize) {
-    //     self.nft_prizes.push(prize);
-    // }
-
-    // pub fn delete_ft_prize(&mut self, index: usize) {
-    //     self.prizes.remove(index);
-    // }
-
-    // pub fn view_prizes(self) -> Vec<Prize> {
-    //     self.prizes
-    // }
 }
 
 pub struct CreatePrizePoolParam {
@@ -122,78 +117,138 @@ pub struct CreatePrizePoolParam {
 impl Contract {
     #[payable]
     pub fn create_prize_pool(&mut self,
-                             id: U64,
                              name: String,
                              describe: String,
                              cover: String,
                              ticket_prize: U128,
+                             ticket_token_id: String,
+                             end_time: u64,
                              fts: Option<Vec<FtPrize>>,
-                             nfts: Option<Vec<NftPrize>>) {
+                             nfts: Option<Vec<NftPrize>>)->u64 {
         assert_one_yocto();
-        let prizes: Vec<PrizeToken> = vec![];
+        // 检测账户余额是否充足
         let account_id = env::predecessor_account_id();
-        // self.prize_pools.insert(&next_id(), PrizePool::new())
-        let mut pool = self.prize_pools.insert(
-            id.into(),
+        let mut account = self.accounts.get(&account_id).unwrap_or(Account::new(&account_id));
+        let ft_prizes = fts.unwrap_or(vec![]);
+        let nft_prizes = nfts.unwrap_or(vec![]);
+        for ft_prize in &ft_prizes {
+            println!("{}",account.fts.get(&ft_prize.token_id).unwrap());
+            let balance = account.fts.get(&ft_prize.token_id).expect("don't have enough token for create prize");
+            assert!(balance>= ft_prize.amount.0,"don't have enough token for create prize");
+            account.fts.insert(&ft_prize.token_id.clone(), &(balance- ft_prize.amount.0.clone()));
+        }
+        self.accounts.insert(&account_id,&account);
+
+        // 创建奖池
+        let id = self.next_id();
+        let pool = self.prize_pools.insert(
+            &id,
             &PrizePool::new(
-                id.into(),
+                id,
                 &account_id,
                 name,
                 describe,
                 cover,
                 ticket_prize,
-                fts.unwrap_or(vec![]),
-                nfts.unwrap_or(vec![]),
-            )).expect("create prize fail");
-        // fts.unwrap_or(vec![]).iter() //foreach(|e| pool.add_ft_prize(e));
-        // nfts.unwrap_or(vec![]). //foreach(|e| pool.add_nft_prize(e));
+                ticket_token_id,
+                end_time.into(),
+                ft_prizes.clone(),
+                nft_prizes.clone(),
+            ));
+
         // 更新用户的拥有记录
-        let mut set = self.own_pools.get(&account_id)
-            .unwrap_or(UnorderedSet::new(StorageKey::OwnPools { account_id }));
-        set.insert(&pool.id);
-        self.own_pools.insert(&account_id,&set);
+        let mut account = self.accounts.get(&account_id).unwrap_or(Account::new(&account_id));
+        account.pools.insert(&id);
+        self.accounts.insert(&account_id, &account);
+        self.pool_queue.push(PrizePoolHeap(end_time,id));
+        return id;
     }
 
-    #[payable]
-    pub fn delete_prize_pool(&mut self, pool_id: U64) {
+    #[private]
+    fn prize_draw(&mut self,pool_id: PoolId ) {
+        let mut pool = self.prize_pools.get(&pool_id).expect("pool id didn't exist");
+        // 1. 检测时间是否合法
+        assert!(pool.end_time<=env::block_timestamp(),"pool end_time ({}) is before block_timestamp({})",pool.end_time,block_timestamp());
+        // 2. 分发奖品
+        let mut joiners = pool.join_accounts.iter().collect_vec();
+        for ft_prize in &pool.ft_prizes {
+            let receiver = vec_random(&mut joiners).unwrap_or(&pool.creator_id);
+            let mut account = self.accounts.get(receiver).unwrap_or(Account::new(receiver));
+            account.deposit(&ft_prize.token_id,&ft_prize.amount.0);
+            self.accounts.insert(receiver,&account);
+            pool.records.push(Record{time: env::block_timestamp(), receiver: receiver.clone(), ft_prize: ft_prize.clone()})
+        }
+        // 3. 设置状态,添加记录
+        pool.finish = true;
+        self.prize_pools.insert(&pool_id,&pool);
+        // 4. 把参与者的门票发给奖池创建者。
+        let mut creator_account = self.accounts.get(&pool.creator_id).unwrap_or(Account::new(&pool.creator_id));
+        let ticket_token_id_balance = creator_account.fts.get(&pool.ticket_token_id).unwrap_or(0);
+        let ticket_amount = (pool.join_accounts.len() as u128)*pool.ticket_price.0;
+        creator_account.fts.insert(&pool.ticket_token_id,&(ticket_token_id_balance+ticket_amount));
+        self.accounts.insert(&pool.creator_id,&creator_account);
+    }
+
+    pub fn delete_prize_pool(&mut self, pool_id: u64) {
         assert_one_yocto();
         self.prize_pools.remove(&pool_id.into());
     }
 
-    pub fn view_prize_pool(&self, pool_id: U64) -> PrizePool {
-        let x = self.prize_pools.get(&pool_id.into()).expect("nonexistent pool id");
-        let prizePool: PrizePool = *x;
-        return (*x)
+    pub fn view_prize_pool(&self, pool_id: u64) -> PrizePool {
+        self.prize_pools.get(&pool_id.into()).expect("nonexistent pool id")
     }
 
-    pub fn view_prize_pool_list(&self) -> vec<PrizePoolDisplay> {
-        return self.prize_pools.iter()
-            .filter_map(|(k, v)| {
-                if env::block_timestamp() < v.end_time {
-                    Option::from(v.into())
-                } else {
-                    Option::None
-                }
-            }).collect_vec();
+    pub fn view_prize_pool_list(&self) -> Vec<PrizePoolDisplay> {
+        return self.prize_pools.values()
+            // .filter(|v| env::block_timestamp() < v.end_time)
+            .map(|v| v.into())
+            .collect_vec();
     }
 
-    #[payable]
-    pub fn join(&mut self, pool_id: U64 ) {
-        let pay = env::attached_deposit();
-        let mut pool = self.prize_pools.get(&pool_id.into()).expect(&format!("no such pool,id:{}", pool_id.into()).to_string());
-        // 支付的金额需要超过门票价
-        assert!(pay>=pool.ticket_price,"The ticket price {} exceeds attahed deposit {}",pool.ticket_price ,pay);
+    pub fn join_pool(&mut self, pool_id: u64) {
         let joiner_id = env::predecessor_account_id();
-        pool.join_accounts.push(joiner_id);
-        self.accounts.get(&joiner_id).get_or_insert()
-        let account = self.accounts.get(&joiner_id)
+        let mut pool = self.prize_pools.get(&pool_id.into()).expect(&format!("no such pool,id:{}", pool_id).to_string());
+        assert!(!pool.finish, "Can't join a finished prize pool");
+        // todo check这样写参数到底能不能成功传入
+        // 检测是否已经参加过了。
+        assert!(!pool.join_accounts.contains(&joiner_id), "{} has joined this prize pool", joiner_id);
+        // 通过attached支付
+        // let pay = env::attached_deposit();
+        // assert!(pay>=pool.ticket_price,"The ticket price {} exceeds attached deposit {}",pool.ticket_price ,pay);
+
+        let mut account = self.accounts
+            .get(&joiner_id)
             .unwrap_or(Account::new(&joiner_id));
-        // account.fts.get(&WRAP_NEAR.to_string()).
+        let balance = account.fts.get(&pool.ticket_token_id).unwrap_or(0);
+        assert!(balance >= pool.ticket_price.0, "{} is less than ticket price", pool.ticket_token_id);
+        account.fts.insert(&pool.ticket_token_id, &(balance - pool.ticket_price.0));
+        account.pools.insert(&pool_id);
+        pool.join_accounts.insert(joiner_id);
+        self.prize_pools.insert(&pool_id,&pool);
     }
 
-
-    #[payable]
-    pub fn quit(&mut self, pool_id: U64 ) {
-
+    pub fn unjoin_pool(&mut self, pool_id: U64) {
+        let mut pool = self.prize_pools.get(&pool_id.into()).expect(&format!("no such pool,id:{}", pool_id.0).to_string());
+        assert!(!pool.finish, "Can't join a finished prize pool");
+        let joiner_id = env::predecessor_account_id();
+        assert!(!pool.join_accounts.contains(&joiner_id), "{} didn't join this prize pool",joiner_id );
+        let mut account = self.accounts
+            .get(&joiner_id)
+            .unwrap_or(Account::new(&joiner_id));
+        let balance = account.fts.get(&pool.ticket_token_id).unwrap_or(0);
+        account.fts.insert(&pool.ticket_token_id, &(balance + pool.ticket_price.0));
+        pool.join_accounts.remove(&joiner_id);
+        account.pools.remove(&pool_id.0);
     }
+
+    // 访问是否有开奖的奖池
+    pub fn touch_pools(&mut self) {
+        println!("block_time: {}",env::block_timestamp());
+        while !self.pool_queue.is_empty()&&self.pool_queue.peek().unwrap().0<=env::block_timestamp() {
+            let pool = self.pool_queue.pop().unwrap();
+            log!("pool {} start prize_draw at {}",pool.1,pool.0);
+            self.prize_draw(pool.1);
+        }
+    }
+
 }

@@ -1,5 +1,6 @@
+use std::convert::TryInto;
 use near_sdk::json_types::U128;
-use near_sdk::{ext_contract, AccountId, Balance, Gas};
+use near_sdk::{ext_contract, AccountId, Balance, Gas,env};
 
 pub(crate) type TokenAccountId = AccountId;
 
@@ -15,6 +16,22 @@ pub trait RefExchange {
         sender_id: AccountId,
         amount: U128,
     );
+}
+
+pub fn random_number_from_block() -> u64{
+    let seed = env::random_seed();
+    let mut arr: [u8; 8] = Default::default();
+    arr.copy_from_slice(&seed[..8]);
+
+    let seed_num: u64 = u64::from_le_bytes(arr).try_into().unwrap();
+    return seed_num;
+}
+
+pub fn vec_random<T>(vec: &mut Vec<T>)-> Option<T> {
+    let len = vec.len();
+    let choose_index: usize = (random_number_from_block() % (len as u64)) as usize;
+    vec.swap(len-1, choose_index.into());
+    vec.pop()
 }
 
 /// Attach no deposit.
