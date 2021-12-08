@@ -26,6 +26,7 @@ pub struct PrizePoolDisplay {
     pub cover: String,
     pub end_time: Timestamp,
     pub joiner_sum: usize,
+    pub ticket_price: FtPrize
 }
 
 impl From<PrizePool> for PrizePoolDisplay {
@@ -38,6 +39,7 @@ impl From<PrizePool> for PrizePoolDisplay {
             cover: prize_pool.cover,
             end_time: prize_pool.end_time,
             joiner_sum: prize_pool.join_accounts.len(),
+            ticket_price: FtPrize{ token_id: prize_pool.ticket_token_id, amount: prize_pool.ticket_price }
         };
     }
 }
