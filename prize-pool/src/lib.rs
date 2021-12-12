@@ -30,6 +30,8 @@ near_sdk::setup_alloc!();
 
 pub type NonFungibleTokenId = String;
 pub type FungibleTokenId = AccountId;
+// 毫秒时间戳
+pub type MilliTimeStamp = u64;
 
 #[derive(BorshStorageKey, BorshSerialize)]
 pub(crate) enum StorageKey {
@@ -58,7 +60,7 @@ impl fmt::Display for RunningState {
 }
 
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
-pub struct PrizePoolHeap(Timestamp,PoolId);
+pub struct PrizePoolHeap(MilliTimeStamp,PoolId);
 impl Eq for PrizePoolHeap {}
 
 impl PartialEq<Self> for PrizePoolHeap {
@@ -143,7 +145,7 @@ mod tests {
     use accounts::Account;
 
     use crate::prize::{FtPrize, PrizeToken};
-    use crate::utils::ONE_YOCTO;
+    use crate::utils::{ONE_YOCTO};
 
     use super::*;
 
@@ -229,6 +231,7 @@ mod tests {
         account.fts.insert(&WRAP_TOKEN.to_string(),&100000000000000000000000000);
         contract.accounts.insert(accounts(0).as_ref(),&account);
     }
+
     #[test]
     fn create_pool_test() {
         let cover = "https://image.baidu.com/search/detail?ct=503316480&z=undefined&tn=baiduimagedetail&ipn=d&word=%E7%9B%B2%E7%9B%92&step_word=&ie=utf-8&in=&cl=2&lm=-1&st=undefined&hd=undefined&latest=undefined&copyright=undefined&cs=984361998,1860976251&os=3817620326,3085336574&simid=3457770807,390738890&pn=0&rn=1&di=187440&ln=1891&fr=&fmq=1638858788964_R&fm=&ic=undefined&s=undefined&se=&sme=&tab=0&width=undefined&height=undefined&face=undefined&is=0,0&istype=0&ist=&jit=&bdtype=0&spn=0&pi=0&gsm=0&objurl=https%3A%2F%2Fpics6.baidu.com%2Ffeed%2F50da81cb39dbb6fd9a5ecf17fcf5541e962b37d6.jpeg%3Ftoken%3Ddea499573d7eaa207f0e0869ce32382a&rpstart=0&rpnum=0&adpicid=0&nojc=undefined&dyTabStr=MCwzLDIsMSw2LDUsNCw3LDgsOQ%3D%3D";

@@ -12,9 +12,9 @@ export CONTRACT_ID=prizepool.$ACCOUNT_ID
 #near delete prizepool.superise.testnet superise.testnet
 
 # 删除重新发布一条龙
-near delete prizepool.superise.testnet xsb.testnet &&
-near create-account $CONTRACT_ID --masterAccount=$ACCOUNT_ID --initialBalance=10 &&
-bash ./build.sh && near deploy $CONTRACT_ID out/prize-pool.wasm  new '{}'
+#near delete prizepool.superise.testnet xsb.testnet &&
+#near create-account $CONTRACT_ID --masterAccount=$ACCOUNT_ID --initialBalance=10 &&
+#bash ./build.sh && near deploy $CONTRACT_ID out/prize-pool.wasm  new '{}'
 
 # 编译wasm
-#bash ./build.sh && near deploy $CONTRACT_ID out/prize-pool.wasm # new '{}'
+bash ./build.sh && near deploy $CONTRACT_ID out/prize-pool.wasm # new '{}'

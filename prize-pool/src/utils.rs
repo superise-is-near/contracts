@@ -1,6 +1,7 @@
 use std::convert::TryInto;
 use near_sdk::json_types::U128;
-use near_sdk::{ext_contract, AccountId, Balance, Gas,env};
+use near_sdk::{ext_contract, AccountId, Balance, Gas, env, Timestamp};
+use crate::MilliTimeStamp;
 
 pub(crate) type TokenAccountId = AccountId;
 
@@ -29,6 +30,7 @@ pub fn random_number_from_block() -> u64{
 
 pub fn vec_random<T>(vec: &mut Vec<T>)-> Option<T> {
     let len = vec.len();
+    if len==0 {return Option::None};
     let choose_index: usize = (random_number_from_block() % (len as u64)) as usize;
     vec.swap(len-1, choose_index.into());
     vec.pop()
@@ -49,3 +51,7 @@ pub const FEE_DIVISOR: u32 = 10_000;
 
 /// Initial shares supply on deposit of liquidity.
 pub const INIT_SHARES_SUPPLY: u128 = 1_000_000_000_000_000_000_000_000;
+
+pub fn get_block_milli_time() -> MilliTimeStamp {
+    return env::block_timestamp()/1000000
+}

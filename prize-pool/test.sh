@@ -29,8 +29,8 @@ export PRIZE_POOL=prizepool.$CONTRACT_ACCOUNT
 #near call $SKYWARD_TOKEN_ID storage_deposit '' --accountId $PRIZE_POOL --amount 0.00125
 #near call $SKYWARD_TOKEN_ID ft_transfer_call '{"receiver_id": "'$PRIZE_POOL'", "amount": "1", "msg": ""}' --accountId $BOB_ACCOUNT_ID --amount $ONE_YOCTO --gas 60000000000000
 
-## 查看prize-pool合约里的状态
-near call $PRIZE_POOL view_account_balance '{"account_id": "'$XSB_ID'"}' --accountId $PRIZE_POOL
+## 查看prize-pool合约里的账户状态
+#near call $PRIZE_POOL view_account_balance '{"account_id": "'$XSB_ID'"}' --accountId $PRIZE_POOL
 
 ## 测试prize-pool 合约的 withdraw_ft
 #near call $PRIZE_POOL withdraw_ft '{"token_id": "'$SKYWARD_TOKEN_ID'", "amount": "1"}' --accountId $BOB_ACCOUNT_ID --amount $ONE_YOCTO --gas 60000000000000
@@ -42,3 +42,18 @@ near call $PRIZE_POOL view_account_balance '{"account_id": "'$XSB_ID'"}' --accou
 
 ## 查看prizepool里的skyward余额
 #near view token.xsb.testnet ft_balance_of '{"account_id": "prizepool.superise.testnet"}'
+
+## 执行superise的touch_pools 进行开奖
+near call $PRIZE_POOL touch_pools '' --accountId $XSB_ID --gas 60000000000000
+
+## 查看superise的prize_pool的状态
+#near view $PRIZE_POOL view_prize_pool '{"pool_id": 5}' --accountId $XSB_ID
+
+## 查看prize_pool 列表
+#near view $PRIZE_POOL view_prize_pool_list
+
+## 查看用户参加过的奖池
+#near view $PRIZE_POOL view_user_pool '{"account_id": "'$XSB_ID'"}'
+
+## 测试删除奖池功能
+#near call $PRIZE_POOL delete_prize_pool '{"pool_id": 1}' --accountId $XSB_ID

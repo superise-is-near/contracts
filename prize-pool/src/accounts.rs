@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use crate::prize::{FtPrize, NftPrize, PrizeToken};
-use crate::prize_pool::PoolId;
+use crate::prize_pool::{PoolId, PrizePoolDisplay};
 use crate::utils::TokenAccountId;
 use crate::utils::{ext_self, GAS_FOR_FT_TRANSFER, GAS_FOR_RESOLVE_TRANSFER};
 use crate::{Contract, StorageKey};
@@ -159,5 +159,12 @@ impl Contract {
         account.withdraw_ft(&token_id, &amount);
         log!("withdraw_ft, token_id {}",token_id);
         self.internal_send_tokens(&sender_id, &token_id, amount)
+    }
+
+    pub fn view_user_pool(&self, account_id: ValidAccountId)->Vec<PrizePoolDisplay> {
+        let account = self.accounts.get(account_id.as_ref()).unwrap_or(Account::new(account_id.as_ref()));
+        return account.pools.iter()
+            .filter_map(|pool_id|self.prize_pools.get(&pool_id))
+            .map(|e|e.into()).collect_vec()
     }
 }

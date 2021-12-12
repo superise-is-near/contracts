@@ -12,7 +12,8 @@ use near_sdk::collections::{UnorderedMap, UnorderedSet};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::env::block_timestamp;
 use near_sdk::serde::{Deserialize, Serialize};
-use crate::utils::vec_random;
+use crate::StorageKey::PrizePools;
+use crate::utils::{get_block_milli_time, vec_random};
 
 pub type PoolId = u64;
 
@@ -24,9 +25,10 @@ pub struct PrizePoolDisplay {
     pub name: String,
     pub describe: String,
     pub cover: String,
-    pub end_time: Timestamp,
+    pub end_time: MilliTimeStamp,
     pub joiner_sum: usize,
-    pub ticket_price: FtPrize
+    pub ticket_price: FtPrize,
+    pub finish: bool
 }
 
 impl From<PrizePool> for PrizePoolDisplay {
@@ -39,7 +41,8 @@ impl From<PrizePool> for PrizePoolDisplay {
             cover: prize_pool.cover,
             end_time: prize_pool.end_time,
             joiner_sum: prize_pool.join_accounts.len(),
-            ticket_price: FtPrize{ token_id: prize_pool.ticket_token_id, amount: prize_pool.ticket_price }
+            ticket_price: FtPrize{ token_id: prize_pool.ticket_token_id, amount: prize_pool.ticket_price },
+            finish: prize_pool.finish
         };
     }
 }
@@ -47,7 +50,7 @@ impl From<PrizePool> for PrizePoolDisplay {
 #[derive(BorshSerialize, BorshDeserialize,Serialize,Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Record {
-    time: Timestamp,
+    time: MilliTimeStamp,
     ft_prize: FtPrize,
     receiver: AccountId
 }
@@ -67,7 +70,7 @@ pub struct PrizePool {
     pub ticket_price: U128,
     pub ticket_token_id: TokenId,
     pub join_accounts: HashSet<AccountId>,
-    pub end_time: Timestamp,
+    pub end_time: MilliTimeStamp,
     pub finish: bool,
     pub records: Vec<Record>
 }
@@ -81,7 +84,7 @@ impl PrizePool {
         cover: String,
         ticket_prize: U128,
         ticket_token_id: String,
-        end_time: Timestamp,
+        end_time: MilliTimeStamp,
         ft_prizes: Vec<FtPrize>,
         nft_prizes: Vec<NftPrize>,
     ) -> Self {
@@ -134,7 +137,6 @@ impl Contract {
         let ft_prizes = fts.unwrap_or(vec![]);
         let nft_prizes = nfts.unwrap_or(vec![]);
         for ft_prize in &ft_prizes {
-            println!("{}",account.fts.get(&ft_prize.token_id).unwrap());
             let balance = account.fts.get(&ft_prize.token_id).expect("don't have enough token for create prize");
             assert!(balance>= ft_prize.amount.0,"don't have enough token for create prize");
             account.fts.insert(&ft_prize.token_id.clone(), &(balance- ft_prize.amount.0.clone()));
@@ -170,7 +172,8 @@ impl Contract {
     fn prize_draw(&mut self,pool_id: PoolId ) {
         let mut pool = self.prize_pools.get(&pool_id).expect("pool id didn't exist");
         // 1. 检测时间是否合法
-        assert!(pool.end_time<=env::block_timestamp(),"pool end_time ({}) is before block_timestamp({})",pool.end_time,block_timestamp());
+        let time_now = get_block_milli_time();
+        assert!(pool.end_time<= time_now,"pool end_time ({}) is before block_timestamp({})",pool.end_time,time_now);
         // 2. 分发奖品
         let mut joiners = pool.join_accounts.iter().collect_vec();
         for ft_prize in &pool.ft_prizes {
@@ -178,7 +181,7 @@ impl Contract {
             let mut account = self.accounts.get(receiver).unwrap_or(Account::new(receiver));
             account.deposit(&ft_prize.token_id,&ft_prize.amount.0);
             self.accounts.insert(receiver,&account);
-            pool.records.push(Record{time: env::block_timestamp(), receiver: receiver.clone(), ft_prize: ft_prize.clone()})
+            pool.records.push(Record{time: get_block_milli_time(), receiver: receiver.clone(), ft_prize: ft_prize.clone()})
         }
         // 3. 设置状态,添加记录
         pool.finish = true;
@@ -192,8 +195,25 @@ impl Contract {
     }
 
     pub fn delete_prize_pool(&mut self, pool_id: u64) {
-        assert_one_yocto();
-        self.prize_pools.remove(&pool_id.into());
+        // 1. 找到Prize pool
+        let pool = self.prize_pools.get(&pool_id).expect("prize pool not exist");
+        // 2. 如果pool 没有finish，返回资产
+        if !pool.finish {
+            // 2.1 返回创建者资产
+            let mut pool_create_account = self.accounts.get(&pool.creator_id).unwrap_or(Account::new(&pool.creator_id));
+            for ft in &pool.ft_prizes {
+                pool_create_account.deposit(&ft.token_id,&ft.amount.0);
+            }
+            self.accounts.insert(&pool.creator_id,&pool_create_account);
+
+            // 2.2 返回参与者资产
+            for joiner in &pool.join_accounts {
+                let mut account = self.accounts.get(&joiner).unwrap_or(Account::new(&joiner));
+                account.deposit(&pool.ticket_token_id,&pool.ticket_price.0);
+            }
+        }
+        // 3. 删除pool, 任务队列中会check pool_id是否存在。
+        self.prize_pools.remove(&pool_id);
     }
 
     pub fn view_prize_pool(&self, pool_id: u64) -> PrizePool {
@@ -245,11 +265,13 @@ impl Contract {
 
     // 访问是否有开奖的奖池
     pub fn touch_pools(&mut self) {
-        println!("block_time: {}",env::block_timestamp());
-        while !self.pool_queue.is_empty()&&self.pool_queue.peek().unwrap().0<=env::block_timestamp() {
+        while !self.pool_queue.is_empty()&&self.pool_queue.peek().unwrap().0<=get_block_milli_time() {
             let pool = self.pool_queue.pop().unwrap();
-            log!("pool {} start prize_draw at {}",pool.1,pool.0);
-            self.prize_draw(pool.1);
+            log!("pool {} start prize_draw at block_time: {}",pool.1, get_block_milli_time());
+            match self.prize_pools.get(&pool.1) {
+                None => {}
+                Some(prize_pool) => {self.prize_draw(prize_pool.id)}
+            }
         }
     }
 
