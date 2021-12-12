@@ -59,7 +59,8 @@ impl fmt::Display for RunningState {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
 pub struct PrizePoolHeap(MilliTimeStamp,PoolId);
 impl Eq for PrizePoolHeap {}
 
@@ -230,6 +231,26 @@ mod tests {
         let mut account = Account::new(accounts(0).as_ref());
         account.fts.insert(&WRAP_TOKEN.to_string(),&100000000000000000000000000);
         contract.accounts.insert(accounts(0).as_ref(),&account);
+    }
+
+    #[test]
+    fn pool_sort_test() {
+        let (mut context, mut contract) = setup_contract();
+        let factory = |id: PoolId,time: MilliTimeStamp,finish: bool|{
+            let mut pool = PrizePool::new(id, &"".to_string(), "".to_string(), "".to_string(),
+                                      "".to_string(), U128::from(123), "".to_string(),
+                                      time,
+                                      vec![], vec![]);
+            pool.finish = finish;
+            return pool;
+        };
+        contract.prize_pools.insert(&1, &factory(1,5,true));
+        contract.prize_pools.insert(&2, &factory(2,6,false));
+        contract.prize_pools.insert(&3, &factory(3,7, false));
+        contract.prize_pools.insert(&4, &factory(4,5, false));
+        let vec1 = contract.view_prize_pool_list().iter().map(|e| e.id).collect_vec();
+        println!("{:?}", vec1);
+
     }
 
     #[test]

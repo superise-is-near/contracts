@@ -10,10 +10,12 @@ use near_sdk::json_types::{U64, ValidAccountId};
 use itertools::{Itertools, join};
 use near_sdk::collections::{UnorderedMap, UnorderedSet};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::env::block_timestamp;
+use near_sdk::env::{block_timestamp, log};
 use near_sdk::serde::{Deserialize, Serialize};
 use crate::StorageKey::PrizePools;
 use crate::utils::{get_block_milli_time, vec_random};
+use std::cmp::Ordering;
+
 
 pub type PoolId = u64;
 
@@ -180,7 +182,9 @@ impl Contract {
             let receiver = vec_random(&mut joiners).unwrap_or(&pool.creator_id);
             let mut account = self.accounts.get(receiver).unwrap_or(Account::new(receiver));
             account.deposit(&ft_prize.token_id,&ft_prize.amount.0);
+            // 更新账户
             self.accounts.insert(receiver,&account);
+            // 保存记录
             pool.records.push(Record{time: get_block_milli_time(), receiver: receiver.clone(), ft_prize: ft_prize.clone()})
         }
         // 3. 设置状态,添加记录
@@ -221,9 +225,14 @@ impl Contract {
     }
 
     pub fn view_prize_pool_list(&self) -> Vec<PrizePoolDisplay> {
+        let sort_ord = |a: &PrizePoolDisplay,b: &PrizePoolDisplay| {
+            if a.finish==b.finish {a.end_time.cmp(&b.end_time)}
+            else if a.finish {Ordering::Greater}
+            else {Ordering::Less}
+        };
         return self.prize_pools.values()
-            // .filter(|v| env::block_timestamp() < v.end_time)
             .map(|v| v.into())
+            .sorted_by(sort_ord)
             .collect_vec();
     }
 
@@ -263,11 +272,17 @@ impl Contract {
         account.pools.remove(&pool_id.0);
     }
 
+    pub fn view_prize_pool_queue(&self) -> Vec<PrizePoolHeap>{
+        return self.pool_queue.iter().map(|e|PrizePoolHeap(e.0,e.1)).collect_vec()
+    }
+
     // 访问是否有开奖的奖池
     pub fn touch_pools(&mut self) {
+        log!("block time is {}",get_block_milli_time());
         while !self.pool_queue.is_empty()&&self.pool_queue.peek().unwrap().0<=get_block_milli_time() {
             let pool = self.pool_queue.pop().unwrap();
             log!("pool {} start prize_draw at block_time: {}",pool.1, get_block_milli_time());
+            // 只有存在的奖池才会继续
             match self.prize_pools.get(&pool.1) {
                 None => {}
                 Some(prize_pool) => {self.prize_draw(prize_pool.id)}
