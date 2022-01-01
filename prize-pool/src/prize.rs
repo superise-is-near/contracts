@@ -15,14 +15,6 @@ pub enum PrizeToken {
     // (a: FungibleTokenId,)
 }
 
-// 奖品
-#[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone)]
-#[serde(crate = "near_sdk::serde")]
-pub struct Prize {
-    pub prize_id: PrizeId,
-    pub token: PrizeToken,
-}
-
 #[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct NftPrize{
@@ -36,11 +28,4 @@ pub struct NftPrize{
 pub struct FtPrize{
     pub token_id: FungibleTokenId,
     pub amount: U128,
-}
-
-impl Prize {
-    pub fn default() -> Self {
-        // let x = PrizeToken::FT { id: "".to_string(), sum: 1 };
-        return Prize{prize_id: 1,token: PrizeToken::NFT {contract: "paras".to_string(),id: "xxx".to_string()}};
-    }
 }

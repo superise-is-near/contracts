@@ -16,12 +16,13 @@ use near_sdk::{assert_one_yocto, env, near_bindgen, AccountId, Balance, Promise,
 use itertools::Itertools;
 use std::panic::catch_unwind;
 use near_sdk::env::log;
+use crate::asset::{ContractId, NftId};
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct Account {
     pub name: AccountId,
     pub fts: UnorderedMap<TokenAccountId, Balance>,
-    // pub nfts: UnorderedSet<NftPrize>,
+    pub nfts: UnorderedMap<AccountId, HashSet<NftId>>,
     pub pools: UnorderedSet<u64>,
 }
 impl fmt::Display for Account {
@@ -42,9 +43,10 @@ impl Account {
     pub fn new(account_id: &AccountId) -> Self {
         Account {
             name: account_id.to_string(),
-            fts: UnorderedMap::new(StorageKey::AccountTokens {
+            fts: UnorderedMap::new(StorageKey::AccountFts {
                 account_id: account_id.clone(),
             }),
+            nfts: UnorderedMap::new(StorageKey::AccountNfts {account_id: account_id.clone()}),
             pools: UnorderedSet::new(StorageKey::AccountPools {
                 account_id: account_id.clone(),
             }),
@@ -52,13 +54,25 @@ impl Account {
     }
 
     /// Deposit amount to the balance of given token.
-    pub(crate) fn deposit(&mut self, token: &AccountId, amount: &Balance) {
+    pub(crate) fn deposit_ft(&mut self, token: &AccountId, amount: &Balance) {
         let balance = self.fts.get(&token).unwrap_or(0);
         self.fts.insert(&token, &(balance + *amount));
         println!("when deposit {}",self)
     }
 
+    pub(crate) fn deposit_nft(&mut self, contract_id: &ContractId, nft_id: &NftId) {
+        let mut nft_set = self.nfts.get(&contract_id).unwrap_or(HashSet::new());
+        nft_set.insert(nft_id.clone());
+        self.nfts.insert(&contract_id,&nft_set);
+    }
+
     pub(crate) fn withdraw_ft(&mut self, token: &AccountId, amount: &Balance) {
+        let balance = self.fts.get(token).expect("unregistered token");
+        assert!(balance >= *amount, "token balance not enough");
+        self.fts.insert(&token, &(balance - (*amount)));
+    }
+
+    pub(crate) fn withdraw_nft(&mut self, token: &AccountId, amount: &Balance) {
         let balance = self.fts.get(token).expect("unregistered token");
         assert!(balance >= *amount, "token balance not enough");
         self.fts.insert(&token, &(balance - (*amount)));
@@ -86,7 +100,7 @@ impl Contract {
                 // This reverts the changes from withdraw function.
                 // If account doesn't exit, deposits to the owner's account as lostfound.
                 if let Some(mut account) = self.accounts.get(&sender_id) {
-                    account.deposit(&token_id, &amount.into())
+                    account.deposit_ft(&token_id, &amount.into())
                 }
             }
         }
@@ -100,7 +114,19 @@ impl Contract {
     ) {
         let mut account = self.accounts.get(&sender_id)
             .unwrap_or(Account::new(&sender_id));
-            account.deposit(&token_id,&amount);
+            account.deposit_ft(&token_id, &amount);
+        self.accounts.insert(&sender_id,&account);
+    }
+
+    pub fn internal_deposit_nft(
+        &mut self,
+        owner_id: &AccountId,
+        contract_id: &ContractId,
+        token_id: &NftId,
+    ) {
+        let mut account = self.accounts.get(&owner_id)
+            .unwrap_or(Account::new(&sender_id));
+        account.deposit_nft(&contract_id, &token_id);
         self.accounts.insert(&sender_id,&account);
     }
 

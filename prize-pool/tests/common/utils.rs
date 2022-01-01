@@ -13,13 +13,22 @@ use ref_exchange::{ContractContract as Exchange, PoolInfo, ContractMetadata};
 use test_token::ContractContract as TestToken;
 
 near_sdk_sim::lazy_static_include::lazy_static_include_bytes! {
-    TEST_TOKEN_WASM_BYTES => "../res/test_token.wasm",
-    PREV_EXCHANGE_WASM_BYTES => "../res/ref_exchange_102.wasm",
-    EXCHANGE_WASM_BYTES => "../res/ref_exchange_release.wasm",
     PRIZPOOL_WASM_BYTES => "../out/main.wasm",
 }
 
+fn dai() -> AccountId {
+    "dai".to_string()
+}
 
+fn eth() -> AccountId {
+    "eth".to_string()
+}
+
+fn swap() -> AccountId {
+    "swap".to_string()
+}
+
+fn prizepool() -> AccountId{"prize-pool".to_string()}
 
 
 

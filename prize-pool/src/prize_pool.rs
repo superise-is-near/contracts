@@ -15,6 +15,7 @@ use near_sdk::serde::{Deserialize, Serialize};
 use crate::StorageKey::PrizePools;
 use crate::utils::{get_block_milli_time, vec_random};
 use std::cmp::Ordering;
+use crate::asset::{Asset, Assets, Nft};
 
 
 pub type PoolId = u64;
@@ -67,7 +68,7 @@ pub struct PrizePool {
     pub cover: String,
     // pub prizes: Vec<Prize>,
     // the fucking typescript is hard to deserialize rust enum type
-    pub ft_prizes: Vec<FtPrize>,
+    pub ft_prizes: Vec<FtPrize> ,
     pub nft_prizes: Vec<NftPrize>,
     pub ticket_price: U128,
     pub ticket_token_id: TokenId,
@@ -107,7 +108,27 @@ impl PrizePool {
         }
     }
 
+    pub fn distribute_prize(&self)->HashMap<AccountId, Asset> {
+        let mut x = HashMap::new();
+        let mut joiners = self.join_accounts.iter().collect_vec();
 
+        for ft_prize in self.ft_prizes {
+            // 从joiners里随机挑选一个，并从数组里删除，如果数组没有元素则选择创建者
+            let receiver = vec_random(&mut joiners).unwrap_or(&self.creator_id);
+        }
+
+
+        for ft_prize in &pool.ft_prizes {
+            let receiver = vec_random(&mut joiners).unwrap_or(&pool.creator_id);
+            let mut account = self.accounts.get(receiver).unwrap_or(Account::new(receiver));
+            account.deposit_ft(&ft_prize.token_id, &ft_prize.amount.0);
+            // 更新账户
+            self.accounts.insert(receiver,&account);
+            // 保存记录
+            pool.records.push(Record{time: get_block_milli_time(), receiver: receiver.clone(), ft_prize: ft_prize.clone()})
+        }
+        return x;
+    }
 }
 
 pub struct CreatePrizePoolParam {
@@ -133,6 +154,7 @@ impl Contract {
                              fts: Option<Vec<FtPrize>>,
                              nfts: Option<Vec<NftPrize>>)->u64 {
         assert_one_yocto();
+        assert!(ticket_prize.0>=0,"ticket_prize:{} should >=0",ticket_prize.0);
         // 检测账户余额是否充足
         let account_id = env::predecessor_account_id();
         let mut account = self.accounts.get(&account_id).unwrap_or(Account::new(&account_id));
@@ -140,7 +162,7 @@ impl Contract {
         let nft_prizes = nfts.unwrap_or(vec![]);
         for ft_prize in &ft_prizes {
             let balance = account.fts.get(&ft_prize.token_id).expect("don't have enough token for create prize");
-            assert!(balance>= ft_prize.amount.0,"don't have enough token for create prize");
+            assert!(balance>= ft_prize.amount.0,"don't have enough {}(has {}) for create prize(need {})",ft_prize.token_id,balance,ft_prize.amount.0);
             account.fts.insert(&ft_prize.token_id.clone(), &(balance- ft_prize.amount.0.clone()));
         }
         self.accounts.insert(&account_id,&account);
@@ -181,7 +203,7 @@ impl Contract {
         for ft_prize in &pool.ft_prizes {
             let receiver = vec_random(&mut joiners).unwrap_or(&pool.creator_id);
             let mut account = self.accounts.get(receiver).unwrap_or(Account::new(receiver));
-            account.deposit(&ft_prize.token_id,&ft_prize.amount.0);
+            account.deposit_ft(&ft_prize.token_id, &ft_prize.amount.0);
             // 更新账户
             self.accounts.insert(receiver,&account);
             // 保存记录
@@ -206,14 +228,14 @@ impl Contract {
             // 2.1 返回创建者资产
             let mut pool_create_account = self.accounts.get(&pool.creator_id).unwrap_or(Account::new(&pool.creator_id));
             for ft in &pool.ft_prizes {
-                pool_create_account.deposit(&ft.token_id,&ft.amount.0);
+                pool_create_account.deposit_ft(&ft.token_id, &ft.amount.0);
             }
             self.accounts.insert(&pool.creator_id,&pool_create_account);
 
             // 2.2 返回参与者资产
             for joiner in &pool.join_accounts {
                 let mut account = self.accounts.get(&joiner).unwrap_or(Account::new(&joiner));
-                account.deposit(&pool.ticket_token_id,&pool.ticket_price.0);
+                account.deposit_ft(&pool.ticket_token_id, &pool.ticket_price.0);
             }
         }
         // 3. 删除pool, 任务队列中会check pool_id是否存在。
@@ -240,12 +262,8 @@ impl Contract {
         let joiner_id = env::predecessor_account_id();
         let mut pool = self.prize_pools.get(&pool_id.into()).expect(&format!("no such pool,id:{}", pool_id).to_string());
         assert!(!pool.finish, "Can't join a finished prize pool");
-        // todo check这样写参数到底能不能成功传入
         // 检测是否已经参加过了。
         assert!(!pool.join_accounts.contains(&joiner_id), "{} has joined this prize pool", joiner_id);
-        // 通过attached支付
-        // let pay = env::attached_deposit();
-        // assert!(pay>=pool.ticket_price,"The ticket price {} exceeds attached deposit {}",pool.ticket_price ,pay);
 
         let mut account = self.accounts
             .get(&joiner_id)
@@ -254,8 +272,9 @@ impl Contract {
         assert!(balance >= pool.ticket_price.0, "{} is less than ticket price", pool.ticket_token_id);
         account.fts.insert(&pool.ticket_token_id, &(balance - pool.ticket_price.0));
         account.pools.insert(&pool_id);
-        pool.join_accounts.insert(joiner_id);
+        pool.join_accounts.insert(String::from(&joiner_id));
         self.prize_pools.insert(&pool_id,&pool);
+        self.accounts.insert(&joiner_id,&account);
     }
 
     pub fn unjoin_pool(&mut self, pool_id: U64) {

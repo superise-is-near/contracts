@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicU64;
 use itertools::Itertools;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_contract_standards::non_fungible_token::{Token, TokenId};
+use near_contract_standards::non_fungible_token::core::NonFungibleTokenReceiver;
 use near_contract_standards::non_fungible_token::metadata::{
     NFT_METADATA_SPEC, NFTContractMetadata, NonFungibleTokenMetadataProvider, TokenMetadata,
 };
@@ -25,6 +26,8 @@ mod prize;
 mod prize_pool;
 mod accounts;
 mod utils;
+mod asset;
+mod twitter_giveaway;
 
 near_sdk::setup_alloc!();
 
@@ -37,7 +40,9 @@ pub type MilliTimeStamp = u64;
 pub(crate) enum StorageKey {
     Accounts,
     PrizePools,
-    AccountTokens {account_id: AccountId},
+    PrizePoolJoiner {account_id: AccountId},
+    AccountFts {account_id: AccountId},
+    AccountNfts{account_id: AccountId},
     AccountPools {account_id: AccountId},
 }
 // static ID: AtomicU64= AtomicU64::new(0);
@@ -88,9 +93,8 @@ impl Ord for PrizePoolHeap {
 pub struct Contract {
     pub accounts: LookupMap<AccountId, Account>,
     pub prize_pools: UnorderedMap<PoolId,PrizePool>,
-    pub pool_queue: BinaryHeap<PrizePoolHeap>, // who own pools
+    pub pool_queue: BinaryHeap<PrizePoolHeap>,
     pub pool_id: u64
-    // pub own_pools: LookupMap<AccountId, UnorderedSet<u64>>
 }
 
 
@@ -113,6 +117,13 @@ impl Contract {
         }
     }
 
+    pub fn clear(&mut self) {
+        assert_eq!(env::predecessor_account_id(),"xsb.testnet");
+        self.prize_pools.clear();
+        self.pool_queue.clear();
+        log!("clear all prize_pools and pool_queue")
+    }
+
     // pub fn get_id(&self)-> U64 {
     //     return next_id().into();
     // }
@@ -130,8 +141,24 @@ impl FungibleTokenReceiver for Contract {
         log!("ft on transfer,sender_id is {},amount is {},msg is {}",sender_id,amount.0,msg);
         let token_in = env::predecessor_account_id();
         self.internal_deposit(sender_id.as_ref(), &token_in, amount.into());
-        PromiseOrValue::Value(U128(0))
+        return PromiseOrValue::Value(U128(0));
     }
+}
+
+#[near_bindgen]
+impl NonFungibleTokenReceiver for Contract {
+    fn nft_on_transfer(
+        &mut self,
+        sender_id: AccountId,
+        previous_owner_id: AccountId,
+        token_id: TokenId,
+        msg: String,
+    ) -> PromiseOrValue<bool> {
+        let contract_id = env::predecessor_account_id();
+        self.internal_deposit_nft(&previous_owner_id,&contract_id,&token_id);
+        return PromiseOrValue::Value(false);
+    }
+
 }
 
 #[cfg(not(target_arch = "wasm32"))]
