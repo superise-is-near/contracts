@@ -19,7 +19,7 @@ use near_sdk::json_types::{U128, U64, ValidAccountId};
 use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::accounts::Account;
-use crate::prize::Prize;
+use crate::asset::Assets;
 use crate::prize_pool::{PoolId, PrizePool};
 
 mod prize;
@@ -91,7 +91,7 @@ impl Ord for PrizePoolHeap {
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    pub accounts: LookupMap<AccountId, Account>,
+    pub accounts: LookupMap<AccountId, Assets>,
     pub prize_pools: UnorderedMap<PoolId,PrizePool>,
     pub pool_queue: BinaryHeap<PrizePoolHeap>,
     pub pool_id: u64

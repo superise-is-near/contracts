@@ -5,7 +5,6 @@ use crate::MilliTimeStamp;
 
 pub(crate) type TokenAccountId = AccountId;
 
-
 pub(crate) const ONE_YOCTO: Balance = 1;
 pub(crate) const ONE_NEAR: Balance = 10u128.pow(24);
 

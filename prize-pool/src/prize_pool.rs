@@ -4,7 +4,7 @@ use crate::prize::NftPrize;
 use crate::prize::FtPrize;
 use crate::*;
 use crate::{NonFungibleTokenId, FungibleTokenId, Contract, StorageKey};
-use crate::prize::{Prize, PrizeToken};
+use crate::prize::{PrizeToken};
 use near_sdk::{assert_one_yocto, near_bindgen, AccountId, env, Timestamp};
 use near_sdk::json_types::{U64, ValidAccountId};
 use itertools::{Itertools, join};

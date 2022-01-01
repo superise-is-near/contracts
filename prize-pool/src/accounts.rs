@@ -21,6 +21,7 @@ use crate::asset::{ContractId, NftId};
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct Account {
     pub name: AccountId,
+
     pub fts: UnorderedMap<TokenAccountId, Balance>,
     pub nfts: UnorderedMap<AccountId, HashSet<NftId>>,
     pub pools: UnorderedSet<u64>,

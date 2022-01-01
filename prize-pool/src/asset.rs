@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::io::Error;
 use near_sdk::{AccountId, Balance};
 
 pub type ContractId=String;
@@ -8,7 +9,7 @@ pub enum Asset{
 }
 pub struct Ft{
     pub contract_id: ContractId,
-    pub sum: Balance
+    pub balance: Balance
 }
 
 pub struct Nft{
@@ -43,8 +44,20 @@ impl Assets {
         self.nfts.get(&contract_id).unwrap().insert(nft_id.clone());
     }
 
-    pub fn withdraw_ft(&mut self, ft: &Ft)-> Result< T,&'static str>{
-        let balance = self.fts.get(&ft.contract_id).unwrap_or(0);
+    pub fn withdraw_ft(&mut self, ft: &Ft)-> Result< (),&'static str>{
+        let balance = self.fts.get(&ft.contract_id).unwrap_or(&0);
+        if balance < *ft.balance {
+            return Result::Err("xxx")
+        }
+        self.fts.insert(ft.contract_id.clone(),balance-(*ft.balance));
+        return Result::Ok(())
+    }
 
+    pub fn withdraw_nft(&mut self, nft: &Nft)-> Result<(),&'static str>{
+        if self.nfts.contains_key(&nft.contract_id)&& self.nfts.get(&nft.contract_id).unwrap().contains(&nft.nft_id) {
+            self.nfts.get(&nft.contract_id).unwrap().remove(&nft.nft_id);
+            return Result::Ok(());
+        }
+        return Result::Err("");
     }
 }
