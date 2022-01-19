@@ -1,4 +1,5 @@
-use crate::{NonFungibleTokenId, FungibleTokenId, Contract};
+use crate::*;
+use crate::asset::*;
 use near_sdk::collections::{UnorderedMap, Vector};
 use near_sdk::json_types::{U128, ValidAccountId};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
@@ -7,25 +8,20 @@ use near_sdk::serde::{Serialize,Deserialize};
 
 pub type PrizeId = u64;
 
-#[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone)]
-#[serde(crate = "near_sdk::serde")]
-pub enum PrizeToken {
-    NFT { contract: NonFungibleTokenId,id: String },
-    FT { contract: FungibleTokenId, sum: u64 },
-    // (a: FungibleTokenId,)
+pub enum Prize {
+    NFT_PRIZE(NftPrize),FT_PRIZE(FtPrize)
 }
 
 #[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct NftPrize{
     pub prize_id: PrizeId,
-    pub contract: NonFungibleTokenId,
-    pub id: String
+    pub nft: Nft,
 }
 
 #[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct FtPrize{
-    pub token_id: FungibleTokenId,
-    pub amount: U128,
+    pub prize_id: PrizeId,
+    pub ft: Ft,
 }
