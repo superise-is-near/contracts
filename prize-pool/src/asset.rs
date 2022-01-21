@@ -1,3 +1,4 @@
+use std::borrow::BorrowMut;
 use crate::*;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -16,14 +17,14 @@ pub enum Asset {
 #[derive(BorshDeserialize, BorshSerialize,Debug,Serialize,Deserialize,Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Ft {
-    pub contract_id: ContractId,
+    pub contract_id: String,
     pub balance: Balance,
 }
 
 #[derive(BorshDeserialize, BorshSerialize,Debug,Serialize,Deserialize,Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Nft {
-    pub contract_id: ContractId,
+    pub contract_id: String,
     pub nft_id: NftId,
 }
 
@@ -44,9 +45,16 @@ impl Default for Assets {
 }
 
 impl Assets {
+
+    pub fn deposit_asset(&mut self, asset: &Asset) {
+        match asset {
+            Asset::Ft(ft)=>self.deposit_ft(ft),
+            Asset::Nft(nft) => self.deposit_nft(nft)
+        }
+    }
+
     pub fn deposit_ft(&mut self, ft: &Ft) {
-        let x = self.fts.get(&ft.contract_id).unwrap_or(&0);
-        self.fts.insert(ft.contract_id.clone(), *x + ft.balance);
+        self.deposit_contract_amount(&ft.contract_id,&ft.balance);
     }
 
     pub fn deposit_contract_amount(&mut self, contract_id: &ContractId,  amount: &Amount) {
@@ -54,19 +62,14 @@ impl Assets {
         self.fts.insert(contract_id.clone(), *x + *amount);
     }
 
-
     pub fn deposit_nft(&mut self, nft: &Nft) {
-        if !self.nfts.contains_key(&nft.contract_id) {
-            self.nfts.insert(nft.contract_id.clone(), HashSet::default());
-        }
-        self.nfts.get(&nft.contract_id).unwrap().insert(nft.nft_id.clone());
+        self.deposit_contract_nft_id(&nft.contract_id,&nft.nft_id);
     }
 
     pub fn deposit_contract_nft_id(&mut self, contract_id: &ContractId, nft_id: &NftId) {
-        if !self.nfts.contains_key(contract_id) {
-            self.nfts.insert(contract_id.clone(), HashSet::default());
-        }
-        self.nfts.get(contract_id).unwrap().insert(nft_id.clone());
+        self.nfts.entry(contract_id.clone())
+            .or_insert(Default::default())
+            .insert(nft_id.clone());
     }
 
     pub fn withdraw_ft(&mut self, ft: &Ft) {
@@ -85,15 +88,10 @@ impl Assets {
     }
 
     pub fn withdraw_nft(&mut self, nft: &Nft) {
-        if !(self.nfts.contains_key(&nft.contract_id) && self.nfts.get(&nft.contract_id).unwrap().contains(&nft.nft_id)) {
-            panic!("Fail to withdraw nft {{contract_id: {},amount: {}}}, no such nft", nft.contract_id,nft.nft_id);
-        }
-        self.nfts.get(&nft.contract_id).unwrap().remove(&nft.nft_id);
+        self.withdraw_contract_nft_id(&nft.contract_id,&nft.nft_id);
     }
     pub fn withdraw_contract_nft_id(&mut self, contract_id: &ContractId, nft_id: &NftId) {
-        if !(self.nfts.contains_key(contract_id) && self.nfts.get(contract_id).unwrap().contains(nft_id)) {
-            panic!("Fail to withdraw nft {{contract_id: {},amount: {}}}, no such nft", contract_id,nft_id);
-        }
-        self.nfts.get(contract_id).unwrap().remove(nft_id);
+        let mut nfts = self.nfts.get_mut(contract_id).expect("nft not exist");
+        assert!(nfts.remove(nft_id),"nft not exist");
     }
 }

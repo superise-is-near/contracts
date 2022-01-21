@@ -24,18 +24,10 @@ pub struct Nft {
     pub nft_id: NftId,
 }
 
+#[derive(Default)]
 pub struct Assets {
     pub fts: HashMap<ContractId, Balance>,
     pub nfts: HashMap<ContractId, HashSet<NftId>>,
-}
-
-impl Default for Assets {
-    fn default() -> Self {
-        return Assets {
-            fts: Default::default(),
-            nfts: Default::default(),
-        };
-    }
 }
 
 impl Assets {

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use crate::prize::{FtPrize, NftPrize, PrizeToken};
-use crate::prize_pool::{PoolId, PrizePoolDisplay};
+use crate::prize::{FtPrize, NftPrize};
+use crate::prize_pool::{PoolId};
 use crate::utils::TokenAccountId;
 use crate::utils::{ext_self, GAS_FOR_FT_TRANSFER, GAS_FOR_RESOLVE_TRANSFER};
 use crate::{Contract, StorageKey};
@@ -78,46 +78,21 @@ impl Contract {
                 // This reverts the changes from withdraw function.
                 // If account doesn't exit, deposits to the owner's account as lostfound.
                 if let Some(mut account) = self.accounts.get(&sender_id) {
-                    account.assets.deposit_ft(&token_id, &amount.into()) 
+                    account.assets.deposit_contract_amount(&token_id, &amount.into())
                 }
             }
         }
     }
 
-    pub fn internal_deposit(
-        &mut self,
-        sender_id: &AccountId,
-        token_id: &AccountId,
-        amount: Balance,
-    ) {
-        let mut account = self.accounts.get(&sender_id)
-            .unwrap_or(Account::new(&sender_id));
-        account.assets.deposit_ft(&token_id, &amount);
-        self.accounts.insert(&sender_id,&account);
-    }
-
-    pub fn internal_deposit_nft(
-        &mut self,
-        owner_id: &AccountId,
-        contract_id: &ContractId,
-        token_id: &NftId,
-    ) {
-        let mut account = self.accounts.get(&owner_id)
-            .unwrap_or(Account::new(&owner_id));
-        account.assets.deposit_nft(&contract_id, &token_id);
-        self.accounts.insert(&owner_id,&account);
-    }
-
-    /// Sends given amount to given user and if it fails, returns it back to user's balance.
-    /// Tokens must already be subtracted from internal balance.
-    pub(crate) fn internal_send_tokens(
+    // transfer ft to other account
+    pub(crate) fn external_send_ft(
         &self,
-        sender_id: &AccountId,
+        received_id: &AccountId,
         token_id: &AccountId,
         amount: Balance,
     ) -> Promise {
         ext_fungible_token::ft_transfer(
-            sender_id.clone(),
+            received_id.clone(),
             U128(amount),
             None,
             &token_id,
@@ -126,7 +101,7 @@ impl Contract {
         )
         .then(ext_self::exchange_callback_post_withdraw(
             token_id.clone(),
-            sender_id.clone(),
+            received_id.clone(),
             U128(amount),
             &env::current_account_id(),
             0,
@@ -136,38 +111,41 @@ impl Contract {
 
     pub fn view_account_balance(&self, account_id: ValidAccountId)->Assets {
         return self.accounts.get(&account_id.as_ref())
-        .expect(format!("no such account: {}",account_id))
+        .expect(&format!("no such account: {}",account_id))
         .assets;
     }
 
+    pub fn internal_deposit_ft(&mut self, account_id: &ValidAccountId, contract_id: &ContractId,amount: &U128) {
+        let mut account = self.accounts.get(account_id.as_ref()).unwrap_or(Account::new(account_id.as_ref()));
+        account.assets.deposit_contract_amount(&contract_id,&amount.0);
+        self.accounts.insert(&account_id.as_ref(),&account);
+    }
 
-    #[payable]
-    pub fn withdraw_ft(&mut self, token_id: ValidAccountId, amount: U128) -> Promise {
-        // assert_one_yocto();
-        // let token_id: AccountId = token_id.into();
-        // let amount: u128 = amount.into();
-        // assert!(amount > 0, "{}", "Illegal withdraw amount");
-        // let sender_id = env::predecessor_account_id();
-        // let mut account = self.accounts.get(&sender_id).expect("no such account");
-        // account.assets.withdraw_ft(&token_id, &amount);
-        // log!("withdraw_ft, token_id {}",token_id);
-        self.internal_send_tokens(&sender_id, &token_id, amount)
-
-        //1. 拿到account
-        let mut account = self.accounts.get(&env::predecessor_account_id()).expect("no such user");
-        //2. 调account的withdraw
-        account.assets.withdraw_contract_amount(token_id.into(),&amount.0);
-
-        //3. 把资产转给用户
-
-
+    pub fn internal_deposit_nft(&mut self, account_id: &AccountId, contract_id: &ContractId, nft_id: &NftId) {
 
     }
 
-    pub fn view_user_pool(&self, account_id: ValidAccountId)->Vec<PrizePoolDisplay> {
-        let account = self.accounts.get(account_id.as_ref()).unwrap_or(Account::new(account_id.as_ref()));
-        return account.pools.iter()
-            .filter_map(|pool_id|self.prize_pools.get(&pool_id))
-            .map(|e|e.into()).collect_vec()
-    }
+
+    // //todo 实现withdraw
+    // #[payable]
+    // pub fn withdraw_ft(&mut self, token_id: ValidAccountId, amount: U128) -> Promise {
+    //     // assert_one_yocto();
+    //     // let token_id: AccountId = token_id.into();
+    //     // let amount: u128 = amount.into();
+    //     // assert!(amount > 0, "{}", "Illegal withdraw amount");
+    //     // let sender_id = env::predecessor_account_id();
+    //     // let mut account = self.accounts.get(&sender_id).expect("no such account");
+    //     // account.assets.withdraw_ft(&token_id, &amount);
+    //     // log!("withdraw_ft, token_id {}",token_id);
+    //     //todo 安全措施，参考ref里env::predecessor_account_id拿到用户id后需要先check用户是否注册
+    //     self.external_send_ft(&env::predecessor_account_id(), &token_id.into(), amount.0);
+    //
+    //     //1. 拿到account
+    //     let mut account = self.accounts.get(&env::predecessor_account_id()).expect("no such user");
+    //     //2. 调account的withdraw
+    //     account.assets.withdraw_contract_amount(token_id.as_ref(),&amount.0);
+    //
+    //     //3. 把资产转给用户
+    //
+    // }
 }

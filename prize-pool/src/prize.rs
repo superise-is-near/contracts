@@ -12,14 +12,14 @@ pub enum Prize {
     NFT_PRIZE(NftPrize),FT_PRIZE(FtPrize)
 }
 
-#[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone)]
+#[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone,Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct NftPrize{
     pub prize_id: PrizeId,
     pub nft: Nft,
 }
 
-#[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone)]
+#[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone,Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct FtPrize{
     pub prize_id: PrizeId,

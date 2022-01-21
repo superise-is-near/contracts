@@ -55,8 +55,3 @@ pub const INIT_SHARES_SUPPLY: u128 = 1_000_000_000_000_000_000_000_000;
 pub fn get_block_milli_time() -> MilliTimeStamp {
     return env::block_timestamp()/1000000;
 }
-
-pub fn random_distribution_prizes() {
-
-}
-
