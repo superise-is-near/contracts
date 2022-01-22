@@ -16,6 +16,44 @@ type TwitterAccount = String;
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone,Debug)]
 #[serde(crate = "near_sdk::serde")]
+pub struct TwitterPoolDisplay {
+    pub name: String,
+    pub describe: String,
+    pub cover: String,
+    pub finish: bool,
+    pub end_time: MilliTimeStamp,
+    pub twitter_link: String
+}
+
+impl From<TwitterPool> for TwitterPoolDisplay {
+    fn from(pool: TwitterPool) -> Self {
+        TwitterPoolDisplay {
+            name: pool.name,
+            describe: pool.describe,
+            cover: pool.cover,
+            finish: pool.finish,
+            end_time: pool.end_time,
+            twitter_link: pool.twitter_link
+        }
+    }
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone,Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub struct TwitterPoolDetail {
+    pub name: String,
+    pub describe: String,
+    pub cover: String,
+    pub prize_pool: PrizePool,
+    pub finish: bool,
+    pub end_time: MilliTimeStamp,
+    pub white_list: Vec<AccountId>,
+    pub requirement: Vec<String>,
+    pub twitter_link: String
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone,Debug)]
+#[serde(crate = "near_sdk::serde")]
 pub struct TwitterPoolWhiteListParam {
     pub pool_id: PoolId,
     pub account: ValidAccountId,
@@ -31,7 +69,7 @@ pub struct TwitterPool {
     pub finish: bool,
     pub end_time: MilliTimeStamp,
     pub white_list: HashSet<AccountId>,
-    pub requirement: Vec<String>,
+    pub requirements: String,
     pub twitter_near_bind: HashMap<AccountId, TwitterAccount>,
     pub twitter_link: String
 }
@@ -44,7 +82,7 @@ pub struct TwitterPoolCreateParam {
     pub cover: String,
     pub end_time: MilliTimeStamp,
     pub white_list: Option<Vec<AccountId>>,
-    pub requirement: Option<Vec<String>>,
+    pub requirements: Option<String>,
     pub ft_prizes: Option<Vec<FtPrize>>,
     pub nft_prizes: Option<Vec<NftPrize>>,
     pub join_accounts: Option<Vec<AccountId>>,
@@ -67,7 +105,7 @@ impl TwitterPool {
             finish: false,
             end_time: 0,
             white_list: param.white_list.as_ref().unwrap_or(&vec![]).iter().map(|e|e.clone()).collect(),
-            requirement: param.requirement.as_ref().unwrap_or(&vec![]).clone(),
+            requirements: param.requirements.as_ref().unwrap_or(&"".to_string()).clone(),
             twitter_near_bind: Default::default(),
             twitter_link: param.twitter_link.clone()
         }
@@ -134,9 +172,10 @@ impl Contract {
         pool.white_list.insert(param.account.into());
     }
 
-    // pub fn view_twitter_prize_pool_list(&self) -> Vec<TwitterPoolDisplay> {
-    //     return self.twitter_prize_pools.get(&pool_id).expect("inexistent pool id");
-    // }
+    pub fn view_twitter_prize_pool_list(&self) -> Vec<TwitterPoolDisplay> {
+        return self.twitter_prize_pools.values().map_into().collect_vec();
+        // return self.twitter_prize_pools.get(&pool_id).expect("inexistent pool id");
+    }
 }
 mod test_twitter {
     use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
@@ -154,8 +193,8 @@ mod test_twitter {
             describe: "test".to_string(),
             cover: "test".to_string(),
             end_time: 0,
-            white_list: None,
-            requirement: None,
+            white_list: Some(vec!["xsb.near".to_string(),"bb.near".to_string()]),
+            requirements: None,
             ft_prizes: None,
             nft_prizes: None,
             join_accounts: None,
