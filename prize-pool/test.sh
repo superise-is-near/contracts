@@ -16,7 +16,7 @@ export WHITELIST_ADMIN=whitelist_admin.$CONTRACT_ACCOUNT
 ## 创建一个bob小号
 #near create-account bob.$ACCOUNT_ID --masterAccount $ACCOUNT_ID --initialBalance 1
 ## 创建一个whitelist_admin账号
-near create-account $WHITELIST_ADMIN --masterAccount $CONTRACT_ACCOUNT --initialBalance 5
+#near create-account $WHITELIST_ADMIN --masterAccount $CONTRACT_ACCOUNT --initialBalance 5
 
 
 ## 给bob一些存储费用

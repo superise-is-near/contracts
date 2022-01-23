@@ -1,7 +1,6 @@
 use std::collections::{BinaryHeap, HashMap};
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
-use std::sync::atomic::AtomicU64;
 
 use itertools::Itertools;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
@@ -13,7 +12,6 @@ use near_contract_standards::non_fungible_token::metadata::{
 use near_contract_standards::non_fungible_token::NonFungibleToken;
 use near_sdk::{AccountId, BorshStorageKey, env, log, near_bindgen, PanicOnDefault, Promise, PromiseOrValue, Timestamp};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::borsh::maybestd::sync::atomic::{AtomicUsize, Ordering};
 use near_sdk::collections::{LazyOption, LookupMap, TreeMap, UnorderedMap, UnorderedSet, Vector};
 use near_sdk::json_types::{U128, U64, ValidAccountId};
 use near_sdk::serde::{Deserialize, Serialize};
@@ -95,7 +93,7 @@ impl Ord for PrizePoolHeap {
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     pub accounts: LookupMap<AccountId, Account>,
-    pub prize_pools: UnorderedMap<PoolId,PrizePool>,
+    // pub prize_pools: UnorderedMap<PoolId,PrizePool>,
     pub twitter_prize_pools: UnorderedMap<PoolId,TwitterPool>,
     pub pool_queue: BinaryHeap<PrizeDrawTime>,
     pub pool_id: u64,
@@ -117,7 +115,7 @@ impl Contract {
     pub fn new(white_list_admin: ValidAccountId) -> Self {
         Self{
             accounts: LookupMap::new(StorageKey::Accounts),
-            prize_pools: UnorderedMap::new(StorageKey::PrizePools),
+            // prize_pools: UnorderedMap::new(StorageKey::PrizePools),
             twitter_prize_pools: UnorderedMap::new(StorageKey::TwitterPools),
             pool_queue: BinaryHeap::new(),
             pool_id: 0,
@@ -128,7 +126,8 @@ impl Contract {
 
     pub fn clear(&mut self) {
         assert_eq!(env::predecessor_account_id(),"xsb.testnet");
-        self.prize_pools.clear();
+        // self.prize_pools.clear();
+        self.twitter_prize_pools.clear();
         self.pool_queue.clear();
         log!("clear all prize_pools and pool_queue")
     }
@@ -178,7 +177,7 @@ impl NonFungibleTokenReceiver for Contract {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use near_sdk::{testing_env, VMContext};
     use near_sdk::MockedBlockchain;
     use near_sdk::serde::Serialize;
@@ -191,6 +190,7 @@ mod tests {
     use crate::utils::{ONE_YOCTO};
 
     use super::*;
+    use crate::*;
 
 // use crate::prize::PrizeToken;
 

@@ -109,10 +109,21 @@ impl Contract {
         ))
     }
 
-    pub fn view_account_balance(&self, account_id: ValidAccountId)->Assets {
+    pub fn view_account_balance(&self, account_id: ValidAccountId)->HashMap<ContractId,U128> {
         return self.accounts.get(&account_id.as_ref())
-        .expect(&format!("no such account: {}",account_id))
-        .assets;
+            .expect("no such account")
+            .assets
+            .fts
+            .iter()
+            .map(|(contract_id,balance)|(contract_id.clone(),U128::from(balance.clone())))
+            .collect()
+            // .map(|(contract_id,balance)|{})
+
+    }
+    pub fn view_account_assets(&self, account_id: ValidAccountId)->AssetsVO {
+        return self.accounts.get(&account_id.as_ref())
+            .expect(&format!("no such account: {}",account_id))
+            .assets.into();
     }
 
     pub fn internal_deposit_ft(&mut self, account_id: &ValidAccountId, contract_id: &ContractId,amount: &U128) {

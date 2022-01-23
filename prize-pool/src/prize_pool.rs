@@ -140,9 +140,9 @@ impl Contract {
         self.twitter_prize_pools.insert(&pool_id,&pool);
     }
 
-    pub fn view_prize_pool(&self, pool_id: u64) -> PrizePool {
-        self.prize_pools.get(&pool_id.into()).expect("nonexistent pool id")
-    }
+    // pub fn view_prize_pool(&self, pool_id: u64) -> PrizePool {
+    //     self.prize_pools.get(&pool_id.into()).expect("nonexistent pool id")
+    // }
 
     pub fn view_prize_pool_queue(&self) -> Vec<PrizeDrawTime> {
         // return self.pool_queue.into_iter().collect_vec();

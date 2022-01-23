@@ -2,9 +2,10 @@ use std::borrow::BorrowMut;
 use crate::*;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::io::Error;
+use std::process::id;
 use near_sdk::{AccountId, Balance};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::serde::Deserializer;
 
 pub type ContractId = String;
 pub type NftId = String;
@@ -26,6 +27,28 @@ pub struct Ft {
 pub struct Nft {
     pub contract_id: String,
     pub nft_id: NftId,
+}
+
+
+#[derive(BorshSerialize, BorshDeserialize,Debug,Clone,Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct AssetsVO {
+    pub fts: HashMap<ContractId, U128>,
+    pub nfts: HashMap<ContractId, Vec<NftId>>,
+}
+
+impl From<Assets> for AssetsVO {
+    fn from(asset: Assets) -> Self {
+        AssetsVO {
+            fts: asset.fts.iter()
+                .map(|(contract_id,balbance)|{(contract_id.clone(),U128::from(balbance.clone()))})
+                .collect(),
+            nfts: asset.nfts.iter()
+                .map(|(contract,ids)|{
+                    (contract.clone(),ids.iter().map(|e|e.clone()).collect_vec())
+                }).collect()
+        }
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize,Debug,Clone,Serialize, Deserialize)]
