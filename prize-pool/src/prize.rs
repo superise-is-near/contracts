@@ -35,12 +35,12 @@ pub struct FtPrize{
 #[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone,Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct FtPrizeCreateParam {
-    pub ft: FtCreateParam,
+    pub ft: Ft,
 }
 
-#[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone,Debug)]
-#[serde(crate = "near_sdk::serde")]
-pub struct FtCreateParam {
-    pub contract_id: String,
-    pub balance: U128,
-}
+// #[derive(BorshDeserialize, BorshSerialize,Serialize,Deserialize,Clone,Debug)]
+// #[serde(crate = "near_sdk::serde")]
+// pub struct FtCreateParam {
+//     pub contract_id: String,
+//     pub balance: U128,
+// }

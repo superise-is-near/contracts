@@ -19,7 +19,7 @@ pub enum Asset {
 #[serde(crate = "near_sdk::serde")]
 pub struct Ft {
     pub contract_id: String,
-    pub balance: Balance,
+    pub balance: U128,
 }
 
 #[derive(BorshDeserialize, BorshSerialize,Debug,Serialize,Deserialize,Clone)]
@@ -77,7 +77,7 @@ impl Assets {
     }
 
     pub fn deposit_ft(&mut self, ft: &Ft) {
-        self.deposit_contract_amount(&ft.contract_id,&ft.balance);
+        self.deposit_contract_amount(&ft.contract_id,&ft.balance.0);
     }
 
     pub fn deposit_contract_amount(&mut self, contract_id: &ContractId,  amount: &Amount) {
@@ -96,11 +96,7 @@ impl Assets {
     }
 
     pub fn withdraw_ft(&mut self, ft: &Ft) {
-        let balance = self.fts.get(&ft.contract_id).unwrap_or(&0);
-        if *balance < ft.balance {
-            panic!("Fail to withdraw ft {{contract_id: {}, amount: {}}}, account balance is {}",ft.contract_id,ft.balance, balance);
-        }
-        self.fts.insert(ft.contract_id.clone(), *balance - ft.balance);
+        self.withdraw_contract_amount(&ft.contract_id,&ft.balance.0);
     }
     pub fn withdraw_contract_amount(&mut self, contract_id: &ContractId, amount: &Amount) {
         let balance = self.fts.get(contract_id).unwrap_or(&0);

@@ -13,6 +13,7 @@ use crate::ContractContract;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::serde::{Deserialize, Serialize};
 use crate::asset::Ft;
+use crate::utils::get_block_milli_time;
 
 
 type TwitterAccount = String;
@@ -74,11 +75,29 @@ pub struct TwitterPool {
     pub prize_pool: PrizePool,
     pub finish: bool,
     pub end_time: MilliTimeStamp,
+    pub create_time: MilliTimeStamp,
     pub white_list: HashSet<AccountId>,
     pub requirements: String,
-    pub twitter_near_bind: HashMap<AccountId, TwitterAccount>,
+    pub twitter_near_bind: HashMap<TwitterAccount,AccountId>,
     pub twitter_link: String,
 }
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub struct TwitterPoolVO {
+    pub name: String,
+    pub describe: String,
+    pub cover: String,
+    pub prize_pool: PrizePool,
+    pub finish: bool,
+    pub end_time: MilliTimeStamp,
+    pub create_time: MilliTimeStamp,
+    pub white_list: HashSet<AccountId>,
+    pub requirements: String,
+    pub twitter_near_bind: HashMap<TwitterAccount,AccountId>,
+    pub twitter_link: String,
+}
+
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "near_sdk::serde")]
@@ -96,26 +115,6 @@ pub struct TwitterPoolCreateParam {
 }
 
 impl TwitterPool {
-    pub fn new_by_near_call(param: &TwitterPoolCreateParam, creator_id: &AccountId, id_gen: fn() -> u64) -> Self {
-        Self {
-            name: param.name.clone(),
-            describe: param.describe.clone(),
-            cover: param.cover.clone(),
-            prize_pool: PrizePool {
-                id: id_gen(),
-                creator_id: creator_id.clone(),
-                ft_prizes: param.ft_prizes.as_ref().unwrap_or(&vec![]).iter().map(|e| FtPrize { ft: Ft{ contract_id: e.ft.contract_id.clone(), balance: e.ft.balance.0 }, prize_id: id_gen() }).collect_vec(),
-                nft_prizes: param.nft_prizes.as_ref().unwrap_or(&vec![]).iter().map(|e| NftPrize { nft: e.nft.clone(), prize_id: id_gen() }).collect_vec(),
-                join_accounts: HashSet::from_iter(param.join_accounts.as_ref().unwrap_or(&vec![]).iter().map(|e| e.clone())),
-            },
-            finish: false,
-            end_time: 0,
-            white_list: param.white_list.as_ref().unwrap_or(&vec![]).iter().map(|e| e.clone()).collect(),
-            requirements: param.requirements.as_ref().unwrap_or(&"".to_string()).clone(),
-            twitter_near_bind: Default::default(),
-            twitter_link: param.twitter_link.clone(),
-        }
-    }
 }
 
 impl DrawPrize for TwitterPool {
@@ -144,7 +143,7 @@ impl Contract {
                 id: self.next_id(),
                 creator_id: env::predecessor_account_id(),
                 ft_prizes: param.ft_prizes.as_ref().unwrap_or(&vec![]).iter().map(|e| FtPrize {
-                    ft: Ft { contract_id: e.ft.contract_id.clone(), balance: e.ft.balance.0 },
+                    ft: Ft { contract_id: e.ft.contract_id.clone(), balance: e.ft.balance },
                     prize_id: self.next_id(),
                 }).collect_vec(),
                 nft_prizes: param.nft_prizes.as_ref().unwrap_or(&vec![]).iter().map(|e| NftPrize { nft: e.nft.clone(), prize_id: self.next_id() }).collect_vec(),
@@ -152,6 +151,7 @@ impl Contract {
             },
             finish: false,
             end_time: param.end_time,
+            create_time: get_block_milli_time(),
             white_list: param.white_list.as_ref().unwrap_or(&vec![]).iter().map(|e| e.clone()).collect(),
             requirements: param.requirements.as_ref().unwrap_or(&"".to_string()).clone(),
             twitter_near_bind: Default::default(),
@@ -177,6 +177,7 @@ impl Contract {
 
     pub fn join_twitter_pool(&mut self, pool_id: u64) {
         let mut pool = self.twitter_prize_pools.get(&pool_id).expect(&format!("no such pool,id:{}", pool_id));
+        assert!(!pool.finish,"this pool have finished!");
         let joiner = env::predecessor_account_id();
         assert!(pool.white_list.contains(&joiner), "you are not in whitelist");
         pool.prize_pool.join_accounts.insert(joiner);
@@ -197,8 +198,11 @@ impl Contract {
         let signer = env::predecessor_account_id();
         // check authority
         assert!(signer == pool.prize_pool.creator_id || signer == self.white_list_admin, "no authority change whitelist");
-        assert!(pool.twitter_near_bind.values().find(|&e| e.eq(&param.twitter_account)).is_none(),
+        assert!(!pool.twitter_near_bind.contains_key(&param.twitter_account),
                 format!("this twitter account {} has been used!", param.twitter_account));
+
+        // todo don't save now for test easier;
+        // pool.twitter_near_bind.insert(param.twitter_account,param.account.clone().into());
         pool.white_list.insert(param.account.into());
         self.twitter_prize_pools.insert(&pool.prize_pool.id, &pool);
     }
@@ -217,7 +221,6 @@ mod test_twitter {
     use near_sdk::log;
     use crate::*;
     use crate::asset::Ft;
-    use crate::prize::{FtCreateParam, FtPrizeCreateParam};
     use crate::TwitterPool;
     use crate::tests::setup_contract;
     use crate::twitter_giveaway::TwitterPoolCreateParam;

@@ -133,7 +133,9 @@ impl Contract {
     }
 
     pub fn internal_deposit_nft(&mut self, account_id: &AccountId, contract_id: &ContractId, nft_id: &NftId) {
-
+        let mut account = self.accounts.get(&account_id).unwrap_or(Account::new(&account_id));
+        account.assets.deposit_contract_nft_id(&contract_id,&nft_id);
+        self.accounts.insert(&account_id,&account);
     }
 
 
