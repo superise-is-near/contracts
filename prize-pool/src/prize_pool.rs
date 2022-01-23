@@ -97,7 +97,11 @@ pub fn random_distribution_prizes(ft_prizes: &Vec<FtPrize>,
     for _ in 0..len {
         let receiver = vec_random(&mut joiners).unwrap_or(creator);
         let prize_index = vec_random(&mut indexs).unwrap();
-        let prize = if prize_index < ft_prizes.len() { Prize::FT_PRIZE(ft_prizes[prize_index].clone()) } else { Prize::NFT_PRIZE(nft_prizes[prize_index].clone()) };
+        let prize = if prize_index < ft_prizes.len() {
+            Prize::FT_PRIZE(ft_prizes[prize_index].clone())
+        } else {
+            Prize::NFT_PRIZE(nft_prizes[prize_index-ft_prizes.len()].clone())
+        };
         result.entry(receiver.clone()).or_insert(vec![]).push(prize)
     };
     return result;
