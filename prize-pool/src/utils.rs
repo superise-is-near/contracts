@@ -9,15 +9,12 @@ pub(crate) type TokenAccountId = AccountId;
 pub(crate) const ONE_YOCTO: Balance = 1;
 pub(crate) const ONE_NEAR: Balance = 10u128.pow(24);
 
-#[ext_contract(ext_self)]
-pub trait RefExchange {
-    fn exchange_callback_post_withdraw(
-        &mut self,
-        token_id: AccountId,
-        sender_id: AccountId,
-        amount: U128,
-    );
-}
+// 1TGas = 1e12gas = 0.0001 Ⓝ in 2021/12/3
+// 1TGas ≈ 1 millisecond of "compute" time
+// max gas now is 300tgas = 300000000000000
+pub(crate) const ONE_TERA_GAS: Balance = 10u128.pow(12);
+
+
 
 pub fn random_number_from_block() -> u64{
     let seed = env::random_seed();

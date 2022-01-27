@@ -7,7 +7,7 @@ use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_contract_standards::non_fungible_token::{Token, TokenId};
 use near_contract_standards::non_fungible_token::core::NonFungibleTokenReceiver;
 use near_contract_standards::non_fungible_token::metadata::{
-    NFT_METADATA_SPEC, NFTContractMetadata, NonFungibleTokenMetadataProvider, TokenMetadata,
+    NFT_METADATA_SPEC, NFTContractMetadata, TokenMetadata,
 };
 use near_contract_standards::non_fungible_token::NonFungibleToken;
 use near_sdk::{AccountId, BorshStorageKey, env, log, near_bindgen, PanicOnDefault, Promise, PromiseOrValue, Timestamp};
@@ -136,6 +136,8 @@ impl Contract {
     //     return next_id().into();
     // }
 }
+
+
 
 #[near_bindgen]
 impl FungibleTokenReceiver for Contract {

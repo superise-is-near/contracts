@@ -32,14 +32,14 @@ pub struct Nft {
 
 #[derive(BorshSerialize, BorshDeserialize,Debug,Clone,Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-pub struct AssetsVO {
+pub struct AssetsDTO {
     pub fts: HashMap<ContractId, U128>,
     pub nfts: HashMap<ContractId, Vec<NftId>>,
 }
 
-impl From<Assets> for AssetsVO {
+impl From<Assets> for AssetsDTO {
     fn from(asset: Assets) -> Self {
-        AssetsVO {
+        AssetsDTO {
             fts: asset.fts.iter()
                 .map(|(contract_id,balbance)|{(contract_id.clone(),U128::from(balbance.clone()))})
                 .collect(),
