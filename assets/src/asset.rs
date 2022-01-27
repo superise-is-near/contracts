@@ -3,7 +3,7 @@ use crate::MethodName;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::Error;
-use near_sdk::{AccountId, Balance};
+use near_sdk::{AccountId, Balance, log};
 use crate::{ContractId, NftId};
 
 
@@ -29,11 +29,12 @@ pub struct Assets {
     pub fts: HashMap<ContractId, Balance>,
     pub nfts: HashMap<ContractId, HashSet<NftId>>,
 }
-
 impl Assets {
     pub fn deposit_ft(&mut self, account_id: &AccountId, amount: &Balance) {
         let x = self.fts.get(account_id).unwrap_or(&0);
         self.fts.insert(account_id.clone(), *x + amount);
+
+        log!("{}" , )
     }
 
     pub fn deposit_nft(&mut self, contract_id: &ContractId, nft_id: &NftId) {
