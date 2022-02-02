@@ -18,8 +18,26 @@ use crate::asset::{Asset, Assets, Ft, Nft};
 
 pub type PoolId = u64;
 
-enum PoolEnum {
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub enum VPool {
     TwitterPool(TwitterPool)
+}
+
+impl VPool {
+    pub fn into_twitter_pool(self)->TwitterPool {
+        match self { VPool::TwitterPool(pool) => pool }
+    }
+}
+
+#[derive(PartialEq)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub enum PoolStatus {
+    PENDING, // create but not publish
+    ONGOING, // after published
+    FINISHED,
+    DELETED
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Copy)]
@@ -122,7 +140,7 @@ impl Contract {
 
     #[private]
     fn prize_draw(&mut self, pool_id: PoolId) {
-        let mut pool = self.twitter_prize_pools.get(&pool_id).expect("pool id didn't exist");
+        let mut pool =self.get_twitter_pool(&pool_id);
         // 1. check time
         let time_now = get_block_milli_time();
         assert!(pool.end_time <= time_now, "pool end_time ({}) is before block_timestamp({})", pool.end_time, time_now);
@@ -130,18 +148,19 @@ impl Contract {
         let user_prize_map = pool.draw_prize();
         user_prize_map.iter()
             .for_each(|(account_id,prizes)|{
-                let mut account = self.accounts.get(&account_id).unwrap_or(Account::new(&account_id));
+                let mut account = self.internal_get_account(&account_id);
                 prizes.iter().for_each(|prize|{
                     match prize {
                         Prize::NFT_PRIZE(nft_prize) => {account.assets.deposit_nft(&nft_prize.nft)}
                         Prize::FT_PRIZE(ft_prize) => {account.assets.deposit_ft(&ft_prize.ft)}
                     }
                 });
-                self.accounts.insert(&account_id,&account);
+                self.internal_save_account(&account_id,account);
             });
 
-        pool.finish = true;
-        self.twitter_prize_pools.insert(&pool_id,&pool);
+        pool.status = PoolStatus::FINISHED;
+        self.save_twitter_pool(pool);
+        // self.twitter_prize_pools.insert(&pool_id,&pool);
     }
 
     // pub fn view_prize_pool(&self, pool_id: u64) -> PrizePool {

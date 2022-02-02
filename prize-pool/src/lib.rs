@@ -16,9 +16,9 @@ use near_sdk::collections::{LazyOption, LookupMap, TreeMap, UnorderedMap, Unorde
 use near_sdk::json_types::{U128, U64, ValidAccountId};
 use near_sdk::serde::{Deserialize, Serialize};
 
-use crate::accounts::Account;
+use crate::accounts::{Account, VAccount};
 use crate::asset::Assets;
-use crate::prize_pool::{CountDownDrawPrize, DrawPrize, PoolId, PrizeDrawTime, PrizePool};
+use crate::prize_pool::{CountDownDrawPrize, DrawPrize, VPool, PoolId, PrizeDrawTime, PrizePool};
 use crate::twitter_giveaway::TwitterPool;
 
 mod prize;
@@ -35,6 +35,10 @@ pub type FungibleTokenId = AccountId;
 // 毫秒时间戳
 pub type MilliTimeStamp = u64;
 pub type Amount = u128;
+
+const UNINITIALIZED_TIME_STAMP: MilliTimeStamp= 0;
+
+
 
 #[derive(BorshStorageKey, BorshSerialize)]
 pub(crate) enum StorageKey {
@@ -92,9 +96,9 @@ impl Ord for PrizePoolHeap {
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    pub accounts: LookupMap<AccountId, Account>,
+    pub accounts: LookupMap<AccountId, VAccount>,
     // pub prize_pools: UnorderedMap<PoolId,PrizePool>,
-    pub twitter_prize_pools: UnorderedMap<PoolId,TwitterPool>,
+    pub twitter_prize_pools: UnorderedMap<PoolId, VPool>,
     pub pool_queue: BinaryHeap<PrizeDrawTime>,
     pub pool_id: u64,
     pub white_list_admin: AccountId,
@@ -150,7 +154,7 @@ impl FungibleTokenReceiver for Contract {
     ) -> PromiseOrValue<U128> {
         log!("ft on transfer,sender_id is {},amount is {},msg is {}",sender_id,amount.0,msg);
         let token_in = env::predecessor_account_id();
-        self.internal_deposit_ft(&sender_id, &token_in, &amount);
+        self.internal_deposit_ft(sender_id.as_ref(), &token_in, &amount);
         return PromiseOrValue::Value(U128(0));
     }
 }
