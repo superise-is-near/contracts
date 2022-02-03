@@ -7,11 +7,12 @@ use near_sdk::{assert_one_yocto, env, near_bindgen};
 use near_sdk::json_types::ValidAccountId;
 use crate::{Account, AccountId, Assets, Contract, CountDownDrawPrize, DrawPrize, MilliTimeStamp, PoolId, PrizeDrawTime, PrizePool};
 use crate::prize::{FtPrize, FtPrizeCreateParam, NftPrize, NftPrizeCreateParam, Prize};
-use crate::prize_pool::{random_distribution_prizes};
+use crate::prize_pool::{PoolStatus, random_distribution_prizes};
 use crate::StorageKey::TwitterPools;
 use crate::ContractContract;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::serde::de::Unexpected::Str;
 use crate::asset::Ft;
 use crate::utils::get_block_milli_time;
 
@@ -25,10 +26,11 @@ pub struct TwitterPoolDisplay {
     pub name: String,
     pub describe: String,
     pub cover: String,
-    pub finish: bool,
+    pub status: PoolStatus,
     pub end_time: MilliTimeStamp,
     pub twitter_link: String,
 }
+
 
 impl From<TwitterPool> for TwitterPoolDisplay {
     fn from(pool: TwitterPool) -> Self {
@@ -37,7 +39,7 @@ impl From<TwitterPool> for TwitterPoolDisplay {
             name: pool.name,
             describe: pool.describe,
             cover: pool.cover,
-            finish: pool.finish,
+            status: pool.status,
             end_time: pool.end_time,
             twitter_link: pool.twitter_link,
         }
@@ -66,6 +68,12 @@ pub struct TwitterPoolWhiteListParam {
     pub twitter_account: TwitterAccount,
 }
 
+impl From<TwitterPool> for VPool {
+    fn from(pool: TwitterPool) -> Self {
+        Self::TwitterPool(pool)
+    }
+}
+
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TwitterPool {
@@ -73,12 +81,13 @@ pub struct TwitterPool {
     pub describe: String,
     pub cover: String,
     pub prize_pool: PrizePool,
-    pub finish: bool,
+    pub status: PoolStatus,
     pub end_time: MilliTimeStamp,
     pub create_time: MilliTimeStamp,
+    pub update_time: MilliTimeStamp,
     pub white_list: HashSet<AccountId>,
     pub requirements: String,
-    pub twitter_near_bind: HashMap<TwitterAccount,AccountId>,
+    pub twitter_near_bind: HashMap<TwitterAccount, AccountId>,
     pub twitter_link: String,
 }
 
@@ -94,7 +103,7 @@ pub struct TwitterPoolVO {
     pub create_time: MilliTimeStamp,
     pub white_list: HashSet<AccountId>,
     pub requirements: String,
-    pub twitter_near_bind: HashMap<TwitterAccount,AccountId>,
+    pub twitter_near_bind: HashMap<TwitterAccount, AccountId>,
     pub twitter_link: String,
 }
 
@@ -102,19 +111,23 @@ pub struct TwitterPoolVO {
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TwitterPoolCreateParam {
-    pub name: String,
-    pub describe: String,
-    pub cover: String,
-    pub end_time: MilliTimeStamp,
+    pub name: Option<String>,
+    pub describe: Option<String>,
+    pub cover: Option<String>,
+    pub end_time: Option<MilliTimeStamp>,
     pub white_list: Option<Vec<AccountId>>,
     pub requirements: Option<String>,
     pub ft_prizes: Option<Vec<FtPrizeCreateParam>>,
     pub nft_prizes: Option<Vec<NftPrizeCreateParam>>,
     pub join_accounts: Option<Vec<AccountId>>,
-    pub twitter_link: String,
+    pub twitter_link: Option<String>,
 }
 
 impl TwitterPool {
+    pub fn publish(&mut self) {
+        assert_ne!(self.end_time, UNINITIALIZED_TIME_STAMP, "end_time haven't init");
+        self.status = PoolStatus::ONGOING;
+    }
 }
 
 impl DrawPrize for TwitterPool {
@@ -134,11 +147,25 @@ impl From<&TwitterPool> for PrizeDrawTime {
 
 #[near_bindgen]
 impl Contract {
-    pub fn new_twitter_pool_by_create_param(&mut self, param: &TwitterPoolCreateParam) -> TwitterPool {
+    #[private]
+    pub fn get_twitter_pool(&self, id: &PoolId) -> TwitterPool {
+        let pool = self.twitter_prize_pools.get(id).expect("pool not exist");
+        match pool {
+            VPool::TwitterPool(prize_pool) => { prize_pool }
+            _ => panic!("error type")
+        }
+    }
+
+    pub fn save_twitter_pool(&mut self, twitter_pool: TwitterPool) {
+        self.twitter_prize_pools.insert(&twitter_pool.prize_pool.id.clone(), &twitter_pool.into());
+    }
+
+    #[private]
+    fn new_twitter_pool_by_create_param(&mut self, param: &TwitterPoolCreateParam) -> TwitterPool {
         TwitterPool {
-            name: param.name.clone(),
-            describe: param.describe.clone(),
-            cover: param.cover.clone(),
+            name: param.name.as_ref().unwrap_or(&"".to_string()).clone(),
+            describe: param.describe.as_ref().unwrap_or(&"".to_string()).clone(),
+            cover: param.cover.as_ref().unwrap_or(&"".to_string()).clone(),
             prize_pool: PrizePool {
                 id: self.next_id(),
                 creator_id: env::predecessor_account_id(),
@@ -149,52 +176,100 @@ impl Contract {
                 nft_prizes: param.nft_prizes.as_ref().unwrap_or(&vec![]).iter().map(|e| NftPrize { nft: e.nft.clone(), prize_id: self.next_id() }).collect_vec(),
                 join_accounts: HashSet::from_iter(param.join_accounts.as_ref().unwrap_or(&vec![]).iter().map(|e| e.clone())),
             },
-            finish: false,
-            end_time: param.end_time,
+            status: PoolStatus::PENDING,
+            end_time: param.end_time.unwrap_or(UNINITIALIZED_TIME_STAMP),
             create_time: get_block_milli_time(),
+            update_time: get_block_milli_time(),
             white_list: param.white_list.as_ref().unwrap_or(&vec![]).iter().map(|e| e.clone()).collect(),
             requirements: param.requirements.as_ref().unwrap_or(&"".to_string()).clone(),
             twitter_near_bind: Default::default(),
-            twitter_link: param.twitter_link.clone(),
+            twitter_link: param.twitter_link.as_ref().unwrap_or(&"".to_string()).clone(),
         }
     }
 
+    #[private]
+    fn update_twitter_pool_by_create_param(&mut self, param: &TwitterPoolCreateParam, pool_id: &PoolId) {
+        let mut pool = self.get_twitter_pool(&pool_id);
+        if param.name.is_some() { pool.name = param.name.as_ref().unwrap().clone(); }
+        if param.describe.is_some() { pool.describe = param.describe.as_ref().unwrap().clone(); }
+        if param.cover.is_some() { pool.cover = param.cover.as_ref().unwrap().clone(); }
+        if param.ft_prizes.is_some() {
+            pool.prize_pool.ft_prizes = param.ft_prizes.as_ref().unwrap_or(&vec![]).iter().map(|e| FtPrize {
+                ft: Ft { contract_id: e.ft.contract_id.clone(), balance: e.ft.balance },
+                prize_id: self.next_id(),
+            }).collect_vec();
+        }
+        if param.nft_prizes.is_some() {
+            pool.prize_pool.nft_prizes = param.nft_prizes.as_ref().unwrap_or(&vec![]).iter().map(|e| NftPrize { nft: e.nft.clone(), prize_id: self.next_id() }).collect_vec();
+        }
+
+        if param.end_time.is_some() {pool.end_time = param.end_time.as_ref().unwrap().clone();}
+        if param.white_list.is_some() {pool.white_list = param.white_list.as_ref().unwrap_or(&vec![]).iter().map(|e|e.clone()).collect()}
+        // if param.requirements.is_some() {pool.requirements = param.requirements.as_ref().unwrap_or(&"".to_string()).clone()}
+        if param.twitter_link.is_some() {pool.twitter_link = param.twitter_link.as_ref().unwrap().clone();}
+        pool.update_time = get_block_milli_time();
+        self.save_twitter_pool(pool);
+    }
+
     #[payable]
-    pub fn create_twitter_pool(&mut self, param: TwitterPoolCreateParam) -> TwitterPool {
+    pub fn create_twitter_pool(&mut self, param: TwitterPoolCreateParam) -> PoolId {
         assert_one_yocto();
         let creator_id = env::predecessor_account_id();
         // todo user should register first
-        let mut account = self.accounts.get(&creator_id).unwrap_or(Account::new(&creator_id));
+        self.internal_use_account(
+            &creator_id,
+            |account| {
+                param.ft_prizes.as_ref().unwrap_or(&vec![]).iter().for_each(|x| account.assets.withdraw_contract_amount(&x.ft.contract_id, &x.ft.balance.0));
+                param.nft_prizes.as_ref().unwrap_or(&vec![]).iter().for_each(|x| account.assets.withdraw_nft(&x.nft));
+            });
 
-        param.ft_prizes.as_ref().unwrap_or(&vec![]).iter().for_each(|x| account.assets.withdraw_contract_amount(&x.ft.contract_id,&x.ft.balance.0));
-        param.nft_prizes.as_ref().unwrap_or(&vec![]).iter().for_each(|x| account.assets.withdraw_nft(&x.nft));
         // let pool = TwitterPool::new_by_near_call(&param,&creator_id,(self.next_id)(self));
         let pool = self.new_twitter_pool_by_create_param(&param);
-        self.twitter_prize_pools.insert(&pool.prize_pool.id, &pool);
+        let pool_id = pool.prize_pool.id.clone();
         self.pool_queue.push((&pool).into());
-        return pool;
+        self.save_twitter_pool(pool);
+        // self.twitter_prize_pools.insert(&pool.prize_pool.id, &pool.into());
+        return pool_id;
+    }
+
+    #[payable]
+    pub fn update_twitter_pool(&mut self, param: TwitterPoolCreateParam, pool_id: PoolId)-> PoolId {
+        assert_one_yocto();
+        let updater = env::predecessor_account_id();
+        let pool = self.get_twitter_pool(&pool_id);
+        assert_eq!(updater, pool.prize_pool.creator_id, "only creator can update!");
+
+        let mut account = self.internal_get_account(&updater);
+
+        pool.prize_pool.ft_prizes.iter().map(|e|&e.ft).for_each(|ft|account.assets.deposit_ft(ft));
+        pool.prize_pool.nft_prizes.iter().map(|e|&e.nft).for_each(|nft|account.assets.deposit_nft(nft));
+
+        param.ft_prizes.as_ref().unwrap_or(&vec![]).iter().for_each(|x| account.assets.withdraw_contract_amount(&x.ft.contract_id, &x.ft.balance.0));
+        param.nft_prizes.as_ref().unwrap_or(&vec![]).iter().for_each(|x| account.assets.withdraw_nft(&x.nft));
+
+        self.update_twitter_pool_by_create_param(&param,&pool_id);
+        return pool_id;
     }
 
     pub fn join_twitter_pool(&mut self, pool_id: u64) {
-        let mut pool = self.twitter_prize_pools.get(&pool_id).expect(&format!("no such pool,id:{}", pool_id));
-        assert!(!pool.finish,"this pool have finished!");
+        let mut pool = self.get_twitter_pool(&pool_id);//self.twitter_prize_pools.get(&pool_id).expect(&format!("no such pool,id:{}", pool_id));
+        assert_eq!(pool.status, PoolStatus::ONGOING, "pool can only join in ongoing status");
         let joiner = env::predecessor_account_id();
         assert!(pool.white_list.contains(&joiner), "you are not in whitelist");
         pool.prize_pool.join_accounts.insert(joiner);
-        self.twitter_prize_pools.insert(&pool.prize_pool.id, &pool);
+        // self.twitter_prize_pools.insert(&pool.prize_pool.id, &pool);
+        self.save_twitter_pool(pool);
     }
 
     //todo unjoin twitter pool
-    pub fn unjoin_twitter_pool(&mut self, pool_id: PoolId) {}
+    // pub fn unjoin_twitter_pool(&mut self, pool_id: PoolId) {}
 
     pub fn view_twitter_prize_pool(&self, pool_id: PoolId) -> TwitterPool {
-        return self.twitter_prize_pools.get(&pool_id).expect("inexistent pool id");
+        return self.get_twitter_pool(&pool_id);
     }
 
-    pub fn update_whitelist(&mut self) {}
-
     pub fn add_user_into_whitelist(&mut self, param: TwitterPoolWhiteListParam) {
-        let mut pool = self.twitter_prize_pools.get(&param.pool_id).expect("inexistent pool id");
+        let mut pool = self.get_twitter_pool(&param.pool_id);
         let signer = env::predecessor_account_id();
         // check authority
         assert!(signer == pool.prize_pool.creator_id || signer == self.white_list_admin, "no authority change whitelist");
@@ -204,11 +279,11 @@ impl Contract {
         // todo don't save now for test easier;
         // pool.twitter_near_bind.insert(param.twitter_account,param.account.clone().into());
         pool.white_list.insert(param.account.into());
-        self.twitter_prize_pools.insert(&pool.prize_pool.id, &pool);
+        self.save_twitter_pool(pool);
     }
 
     pub fn view_twitter_prize_pool_list(&self) -> Vec<TwitterPoolDisplay> {
-        return self.twitter_prize_pools.values().map_into().collect_vec();
+        return self.twitter_prize_pools.values().map(VPool::into_twitter_pool).map_into().collect_vec();
         // return self.twitter_prize_pools.get(&pool_id).expect("inexistent pool id");
     }
 }
