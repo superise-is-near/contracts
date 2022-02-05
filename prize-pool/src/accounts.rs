@@ -251,14 +251,12 @@ impl Contract {
     pub fn withdraw_ft(&mut self, token_id: ValidAccountId, amount: U128) -> Promise {
         assert_one_yocto();
 
-        //1. 拿到account
+        //1. 使用account
         self.internal_use_account(&env::predecessor_account_id(), |account| {
+            // withdraw
             account.assets.withdraw_contract_amount(token_id.as_ref(), &amount.0);
         });
-        // let mut account = self.accounts.get(&env::predecessor_account_id()).expect("no such user");
-        // //2. 内部withdraw
-        // account.assets.withdraw_contract_amount(token_id.as_ref(), &amount.0);
-        // self.accounts.insert(&account.name, &account);
+
         //3. 外部合约transfer
         self.external_send_ft(&env::predecessor_account_id(), token_id.as_ref(), &amount)
     }
@@ -276,5 +274,47 @@ impl Contract {
         );
         //3. 调外部合约transfer nft
         self.external_send_nft(&env::predecessor_account_id(), contract_id.as_ref(), &nft_id)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod test_account {
+    use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+    use near_sdk::log;
+    use crate::*;
+    use crate::asset::Ft;
+    use crate::TwitterPool;
+    use crate::tests::setup_contract;
+    use crate::twitter_giveaway::TwitterPoolCreateParam;
+
+    #[test]
+    fn test_create() {
+        const CREATE_PARAM_RAW: &str = r#"{
+    "name": "1",
+    "requirements": "[]",
+    "twitter_link": "123",
+    "white_list": [],
+    "cover": "https://justplayproducts.com/wp-content/uploads/2020/06/78550_78551-Ryans-Mystery-Playdate-Mini-Mystery-Boxes-Call-Out-2-scaled-470x470.jpg",
+    "describe": "1",
+    "end_time": 1642919340000,
+    "ft_prizes": [
+      {
+        "ft": {
+          "contract_id": "NEAR",
+          "balance": "00000000000000000000000000"
+        }
+      }
+    ],
+    "join_accounts": null,
+    "nft_prizes": []
+}"#;
+
+        // tests::setup_contract()
+        let (mut context, mut contract) = setup_contract();
+        let param = near_sdk::serde_json::from_str(CREATE_PARAM_RAW).unwrap();
+
+        let pool = contract.create_twitter_pool(param);
+        println!("{:?}", pool)
     }
 }

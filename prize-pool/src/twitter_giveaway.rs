@@ -18,7 +18,14 @@ use crate::utils::get_block_milli_time;
 
 
 type TwitterAccount = String;
-
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub enum PrizeType {
+    NFT,
+    Crypto,
+    NFT_Crypto,
+    No_Prize
+}
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TwitterPoolDisplay {
@@ -29,11 +36,25 @@ pub struct TwitterPoolDisplay {
     pub status: PoolStatus,
     pub end_time: MilliTimeStamp,
     pub twitter_link: String,
+    pub requirements: String,
+    pub prize_type: PrizeType
 }
 
 
 impl From<TwitterPool> for TwitterPoolDisplay {
     fn from(pool: TwitterPool) -> Self {
+
+        let prize_type: PrizeType;
+        if pool.prize_pool.ft_prizes.len()==0&&pool.prize_pool.nft_prizes.len()==0 {
+            prize_type = PrizeType::No_Prize
+        } else if pool.prize_pool.ft_prizes.len()==0 {
+            prize_type = PrizeType::NFT
+        } else if pool.prize_pool.nft_prizes.len()==0 {
+            prize_type = PrizeType::Crypto
+        } else {
+            prize_type = PrizeType::NFT_Crypto
+        }
+
         TwitterPoolDisplay {
             id: pool.prize_pool.id,
             name: pool.name,
@@ -42,6 +63,8 @@ impl From<TwitterPool> for TwitterPoolDisplay {
             status: pool.status,
             end_time: pool.end_time,
             twitter_link: pool.twitter_link,
+            requirements: pool.requirements,
+            prize_type
         }
     }
 }
