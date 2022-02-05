@@ -18,7 +18,14 @@ use crate::utils::get_block_milli_time;
 
 
 type TwitterAccount = String;
-
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub enum PrizeType {
+    NFT,
+    Crypto,
+    NFT_Crypto,
+    No_Prize
+}
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TwitterPoolDisplay {
@@ -29,11 +36,25 @@ pub struct TwitterPoolDisplay {
     pub status: PoolStatus,
     pub end_time: MilliTimeStamp,
     pub twitter_link: String,
+    pub requirements: String,
+    pub prize_type: PrizeType
 }
 
 
 impl From<TwitterPool> for TwitterPoolDisplay {
     fn from(pool: TwitterPool) -> Self {
+
+        let prize_type: PrizeType;
+        if pool.prize_pool.ft_prizes.len()==0&&pool.prize_pool.nft_prizes.len()==0 {
+            prize_type = PrizeType::No_Prize
+        } else if pool.prize_pool.ft_prizes.len()==0 {
+            prize_type = PrizeType::NFT
+        } else if pool.prize_pool.nft_prizes.len()==0 {
+            prize_type = PrizeType::Crypto
+        } else {
+            prize_type = PrizeType::NFT_Crypto
+        }
+
         TwitterPoolDisplay {
             id: pool.prize_pool.id,
             name: pool.name,
@@ -42,6 +63,8 @@ impl From<TwitterPool> for TwitterPoolDisplay {
             status: pool.status,
             end_time: pool.end_time,
             twitter_link: pool.twitter_link,
+            requirements: pool.requirements,
+            prize_type
         }
     }
 }
@@ -147,8 +170,26 @@ impl From<&TwitterPool> for PrizeDrawTime {
 
 #[near_bindgen]
 impl Contract {
+
+    pub fn publish_pool(&mut self, pool_id: PoolId) {
+        self.internal_creator_use_twitter_pool(
+            &pool_id,
+            |pool|{
+               pool.status = PoolStatus::ONGOING;
+            });
+    }
+
     #[private]
-    pub fn get_twitter_pool(&self, id: &PoolId) -> TwitterPool {
+    pub(crate) fn internal_creator_use_twitter_pool<F>(&mut self, pool_id: &PoolId, mut f: F)
+    where F: FnMut(&mut TwitterPool) {
+        let mut pool = self.internal_get_twitter_pool(pool_id);
+        assert_eq!(pool.prize_pool.creator_id,env::predecessor_account_id(),"only creator can use pool!");
+        f(&mut pool);
+        self.internal_save_twitter_pool(pool)
+    }
+
+    #[private]
+    pub fn internal_get_twitter_pool(&self, id: &PoolId) -> TwitterPool {
         let pool = self.twitter_prize_pools.get(id).expect("pool not exist");
         match pool {
             VPool::TwitterPool(prize_pool) => { prize_pool }
@@ -156,7 +197,8 @@ impl Contract {
         }
     }
 
-    pub fn save_twitter_pool(&mut self, twitter_pool: TwitterPool) {
+    #[private]
+    pub fn internal_save_twitter_pool(&mut self, twitter_pool: TwitterPool) {
         self.twitter_prize_pools.insert(&twitter_pool.prize_pool.id.clone(), &twitter_pool.into());
     }
 
@@ -189,7 +231,7 @@ impl Contract {
 
     #[private]
     fn update_twitter_pool_by_create_param(&mut self, param: &TwitterPoolCreateParam, pool_id: &PoolId) {
-        let mut pool = self.get_twitter_pool(&pool_id);
+        let mut pool = self.internal_get_twitter_pool(&pool_id);
         if param.name.is_some() { pool.name = param.name.as_ref().unwrap().clone(); }
         if param.describe.is_some() { pool.describe = param.describe.as_ref().unwrap().clone(); }
         if param.cover.is_some() { pool.cover = param.cover.as_ref().unwrap().clone(); }
@@ -208,7 +250,7 @@ impl Contract {
         // if param.requirements.is_some() {pool.requirements = param.requirements.as_ref().unwrap_or(&"".to_string()).clone()}
         if param.twitter_link.is_some() {pool.twitter_link = param.twitter_link.as_ref().unwrap().clone();}
         pool.update_time = get_block_milli_time();
-        self.save_twitter_pool(pool);
+        self.internal_save_twitter_pool(pool);
     }
 
     #[payable]
@@ -227,7 +269,7 @@ impl Contract {
         let pool = self.new_twitter_pool_by_create_param(&param);
         let pool_id = pool.prize_pool.id.clone();
         self.pool_queue.push((&pool).into());
-        self.save_twitter_pool(pool);
+        self.internal_save_twitter_pool(pool);
         // self.twitter_prize_pools.insert(&pool.prize_pool.id, &pool.into());
         return pool_id;
     }
@@ -236,7 +278,7 @@ impl Contract {
     pub fn update_twitter_pool(&mut self, param: TwitterPoolCreateParam, pool_id: PoolId)-> PoolId {
         assert_one_yocto();
         let updater = env::predecessor_account_id();
-        let pool = self.get_twitter_pool(&pool_id);
+        let pool = self.internal_get_twitter_pool(&pool_id);
         assert_eq!(updater, pool.prize_pool.creator_id, "only creator can update!");
 
         let mut account = self.internal_get_account(&updater);
@@ -252,24 +294,24 @@ impl Contract {
     }
 
     pub fn join_twitter_pool(&mut self, pool_id: u64) {
-        let mut pool = self.get_twitter_pool(&pool_id);//self.twitter_prize_pools.get(&pool_id).expect(&format!("no such pool,id:{}", pool_id));
+        let mut pool = self.internal_get_twitter_pool(&pool_id);//self.twitter_prize_pools.get(&pool_id).expect(&format!("no such pool,id:{}", pool_id));
         assert_eq!(pool.status, PoolStatus::ONGOING, "pool can only join in ongoing status");
         let joiner = env::predecessor_account_id();
         assert!(pool.white_list.contains(&joiner), "you are not in whitelist");
         pool.prize_pool.join_accounts.insert(joiner);
         // self.twitter_prize_pools.insert(&pool.prize_pool.id, &pool);
-        self.save_twitter_pool(pool);
+        self.internal_save_twitter_pool(pool);
     }
 
     //todo unjoin twitter pool
     // pub fn unjoin_twitter_pool(&mut self, pool_id: PoolId) {}
 
     pub fn view_twitter_prize_pool(&self, pool_id: PoolId) -> TwitterPool {
-        return self.get_twitter_pool(&pool_id);
+        return self.internal_get_twitter_pool(&pool_id);
     }
 
     pub fn add_user_into_whitelist(&mut self, param: TwitterPoolWhiteListParam) {
-        let mut pool = self.get_twitter_pool(&param.pool_id);
+        let mut pool = self.internal_get_twitter_pool(&param.pool_id);
         let signer = env::predecessor_account_id();
         // check authority
         assert!(signer == pool.prize_pool.creator_id || signer == self.white_list_admin, "no authority change whitelist");
@@ -279,7 +321,7 @@ impl Contract {
         // todo don't save now for test easier;
         // pool.twitter_near_bind.insert(param.twitter_account,param.account.clone().into());
         pool.white_list.insert(param.account.into());
-        self.save_twitter_pool(pool);
+        self.internal_save_twitter_pool(pool);
     }
 
     pub fn view_twitter_prize_pool_list(&self) -> Vec<TwitterPoolDisplay> {

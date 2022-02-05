@@ -113,7 +113,7 @@ impl Contract {
             PromiseResult::NotReady => unreachable!(),
             PromiseResult::Successful(_) => {}
             PromiseResult::Failed => {
-                self.internal_deposit_nft(&sender_id,&contract_id,&nft_id);
+                self.internal_deposit_nft(&sender_id, &contract_id, &nft_id);
             }
         }
     }
@@ -136,7 +136,7 @@ impl Contract {
             PromiseResult::Failed => {
                 // This reverts the changes from withdraw function.
                 // If account doesn't exit, deposits to the owner's account as lostfound.
-                self.internal_deposit_ft(&sender_id,&token_id,&amount.into());
+                self.internal_deposit_ft(&sender_id, &token_id, &amount.into());
             }
         }
     }
@@ -199,15 +199,15 @@ impl Contract {
     }
 
     // todo add storage manager
-    pub fn internal_get_account(&self, account_id: &AccountId)->Account {
+    pub fn internal_get_account(&self, account_id: &AccountId) -> Account {
         return self.accounts
             .get(account_id)
             .map(VAccount::into_current)
-            .unwrap_or(Account::new(&account_id))
+            .unwrap_or(Account::new(&account_id));
     }
 
     pub fn internal_save_account(&mut self, account_id: &AccountId, account: Account) {
-        self.accounts.insert(account_id,&account.into());
+        self.accounts.insert(account_id, &account.into());
     }
 
     pub fn view_account_balance(&self, account_id: ValidAccountId) -> HashMap<ContractId, U128> {
@@ -224,25 +224,25 @@ impl Contract {
             .assets.into();
     }
 
-    pub(crate) fn internal_use_account<F>(&mut self, account_id: &AccountId,mut f: F )
-        where  F: FnMut(&mut Account){
+    pub(crate) fn internal_use_account<F>(&mut self, account_id: &AccountId, mut f: F)
+    where F: FnMut(&mut Account) {
         let mut account = self.internal_get_account(&account_id);
         f(&mut account);
-        self.internal_save_account(&account_id,account);
+        self.internal_save_account(&account_id, account);
     }
 
     #[private]
     pub fn internal_deposit_ft(&mut self, account_id: &AccountId, contract_id: &ContractId, amount: &U128) {
         let mut account = self.internal_get_account(&account_id);
         account.assets.deposit_contract_amount(&contract_id, &amount.0);
-        self.internal_save_account(account_id,account);
+        self.internal_save_account(account_id, account);
     }
 
     #[private]
     pub fn internal_deposit_nft(&mut self, account_id: &AccountId, contract_id: &ContractId, nft_id: &NftId) {
         let mut account = self.internal_get_account(&account_id);
         account.assets.deposit_contract_nft_id(&contract_id, &nft_id);
-        self.internal_save_account(account_id,account);
+        self.internal_save_account(account_id, account);
     }
 
 
@@ -251,14 +251,12 @@ impl Contract {
     pub fn withdraw_ft(&mut self, token_id: ValidAccountId, amount: U128) -> Promise {
         assert_one_yocto();
 
-        //1. 拿到account
-        self.internal_use_account(&env::predecessor_account_id(),|account|{
+        //1. 使用account
+        self.internal_use_account(&env::predecessor_account_id(), |account| {
+            // withdraw
             account.assets.withdraw_contract_amount(token_id.as_ref(), &amount.0);
         });
-        // let mut account = self.accounts.get(&env::predecessor_account_id()).expect("no such user");
-        // //2. 内部withdraw
-        // account.assets.withdraw_contract_amount(token_id.as_ref(), &amount.0);
-        // self.accounts.insert(&account.name, &account);
+
         //3. 外部合约transfer
         self.external_send_ft(&env::predecessor_account_id(), token_id.as_ref(), &amount)
     }
@@ -271,10 +269,52 @@ impl Contract {
         self.internal_use_account(
             &env::predecessor_account_id(),
             |account| {
-                account.assets.withdraw_contract_nft_id(contract_id.as_ref(),&nft_id);
-            }
+                account.assets.withdraw_contract_nft_id(contract_id.as_ref(), &nft_id);
+            },
         );
         //3. 调外部合约transfer nft
         self.external_send_nft(&env::predecessor_account_id(), contract_id.as_ref(), &nft_id)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod test_account {
+    use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+    use near_sdk::log;
+    use crate::*;
+    use crate::asset::Ft;
+    use crate::TwitterPool;
+    use crate::tests::setup_contract;
+    use crate::twitter_giveaway::TwitterPoolCreateParam;
+
+    #[test]
+    fn test_create() {
+        const CREATE_PARAM_RAW: &str = r#"{
+    "name": "1",
+    "requirements": "[]",
+    "twitter_link": "123",
+    "white_list": [],
+    "cover": "https://justplayproducts.com/wp-content/uploads/2020/06/78550_78551-Ryans-Mystery-Playdate-Mini-Mystery-Boxes-Call-Out-2-scaled-470x470.jpg",
+    "describe": "1",
+    "end_time": 1642919340000,
+    "ft_prizes": [
+      {
+        "ft": {
+          "contract_id": "NEAR",
+          "balance": "00000000000000000000000000"
+        }
+      }
+    ],
+    "join_accounts": null,
+    "nft_prizes": []
+}"#;
+
+        // tests::setup_contract()
+        let (mut context, mut contract) = setup_contract();
+        let param = near_sdk::serde_json::from_str(CREATE_PARAM_RAW).unwrap();
+
+        let pool = contract.create_twitter_pool(param);
+        println!("{:?}", pool)
     }
 }

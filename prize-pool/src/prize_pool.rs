@@ -140,7 +140,7 @@ impl Contract {
 
     #[private]
     fn prize_draw(&mut self, pool_id: PoolId) {
-        let mut pool =self.get_twitter_pool(&pool_id);
+        let mut pool =self.internal_get_twitter_pool(&pool_id);
         // 1. check time
         let time_now = get_block_milli_time();
         assert!(pool.end_time <= time_now, "pool end_time ({}) is before block_timestamp({})", pool.end_time, time_now);
@@ -159,7 +159,7 @@ impl Contract {
             });
 
         pool.status = PoolStatus::FINISHED;
-        self.save_twitter_pool(pool);
+        self.internal_save_twitter_pool(pool);
         // self.twitter_prize_pools.insert(&pool_id,&pool);
     }
 

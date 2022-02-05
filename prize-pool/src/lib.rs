@@ -1,14 +1,11 @@
-use std::collections::{BinaryHeap, HashMap};
-use std::convert::{TryFrom, TryInto};
+use std::collections::BinaryHeap;
+use std::convert::{TryFrom};
 use std::fmt;
 
 use itertools::Itertools;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
-use near_contract_standards::non_fungible_token::{Token, TokenId};
+use near_contract_standards::non_fungible_token::{TokenId};
 use near_contract_standards::non_fungible_token::core::NonFungibleTokenReceiver;
-use near_contract_standards::non_fungible_token::metadata::{
-    NFT_METADATA_SPEC, NFTContractMetadata, TokenMetadata,
-};
 use near_contract_standards::non_fungible_token::NonFungibleToken;
 use near_sdk::{AccountId, BorshStorageKey, env, log, near_bindgen, PanicOnDefault, Promise, PromiseOrValue, Timestamp};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
@@ -18,7 +15,7 @@ use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::accounts::{Account, VAccount};
 use crate::asset::Assets;
-use crate::prize_pool::{CountDownDrawPrize, DrawPrize, VPool, PoolId, PrizeDrawTime, PrizePool};
+use crate::prize_pool::{CountDownDrawPrize, DrawPrize, PoolId, PrizeDrawTime, PrizePool, VPool};
 use crate::twitter_giveaway::TwitterPool;
 
 mod prize;
@@ -192,11 +189,11 @@ pub mod tests {
 
     use accounts::Account;
 
-    use crate::prize::{FtPrize};
-    use crate::utils::{ONE_YOCTO};
+    use crate::*;
+    use crate::prize::FtPrize;
+    use crate::utils::ONE_YOCTO;
 
     use super::*;
-    use crate::*;
 
 // use crate::prize::PrizeToken;
 
