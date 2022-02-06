@@ -33,20 +33,21 @@ pub struct Nft {
 #[derive(BorshSerialize, BorshDeserialize,Debug,Clone,Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct AssetsDTO {
-    pub fts: HashMap<ContractId, U128>,
-    pub nfts: HashMap<ContractId, Vec<NftId>>,
+    pub ft_assets: Vec<Ft>,
+    pub nft_assets: Vec<Nft>,
 }
 
 impl From<Assets> for AssetsDTO {
     fn from(asset: Assets) -> Self {
         AssetsDTO {
-            fts: asset.fts.iter()
-                .map(|(contract_id,balbance)|{(contract_id.clone(),U128::from(balbance.clone()))})
+            ft_assets: asset.fts.iter()
+                .map(|(contract_id,balbance)|Ft{contract_id: contract_id.clone(),balance: U128(balbance.clone())})
                 .collect(),
-            nfts: asset.nfts.iter()
-                .map(|(contract,ids)|{
-                    (contract.clone(),ids.iter().map(|e|e.clone()).collect_vec())
-                }).collect()
+            nft_assets: asset.nfts.iter()
+                .flat_map(|(contract_id,ids)|{
+                    ids.iter().map(move |id|Nft{contract_id:contract_id.clone(),nft_id: id.clone()})
+                })
+                .collect()
         }
     }
 }
