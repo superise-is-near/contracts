@@ -106,12 +106,6 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
 
-    #[private]
-    pub fn next_id(&mut self)->u64{
-        self.pool_id=self.pool_id+1;
-        return self.pool_id
-    }
-
     #[init]
     pub fn new(white_list_admin: ValidAccountId) -> Self {
         Self{
@@ -125,12 +119,23 @@ impl Contract {
         }
     }
 
+    #[private]
+    pub fn next_id(&mut self)->u64{
+        self.pool_id=self.pool_id+1;
+        return self.pool_id
+    }
+
     pub fn clear(&mut self) {
         assert_eq!(env::predecessor_account_id(),"xsb.testnet");
         // self.prize_pools.clear();
         self.twitter_prize_pools.clear();
         self.pool_queue.clear();
         log!("clear all prize_pools and pool_queue")
+    }
+
+    pub fn clear_account(&mut self,account_id: ValidAccountId) {
+        self.accounts.remove(account_id.as_ref());
+        log!("clear account: {} state", account_id);
     }
 
     // pub fn get_id(&self)-> U64 {

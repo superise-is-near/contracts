@@ -11,6 +11,7 @@ use crate::prize_pool::{PoolStatus, random_distribution_prizes};
 use crate::StorageKey::TwitterPools;
 use crate::ContractContract;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::PromiseOrValue::Promise;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::serde::de::Unexpected::Str;
 use crate::asset::Ft;
@@ -18,14 +19,16 @@ use crate::utils::get_block_milli_time;
 
 
 type TwitterAccount = String;
+
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub enum PrizeType {
     NFT,
     Crypto,
     NFT_Crypto,
-    No_Prize
+    No_Prize,
 }
+
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TwitterPoolDisplay {
@@ -36,20 +39,19 @@ pub struct TwitterPoolDisplay {
     pub status: PoolStatus,
     pub end_time: MilliTimeStamp,
     pub twitter_link: String,
-    pub requirements: String,
-    pub prize_type: PrizeType
+    pub requirements: Option<String>,
+    pub prize_type: PrizeType,
 }
 
 
 impl From<TwitterPool> for TwitterPoolDisplay {
     fn from(pool: TwitterPool) -> Self {
-
         let prize_type: PrizeType;
-        if pool.prize_pool.ft_prizes.len()==0&&pool.prize_pool.nft_prizes.len()==0 {
+        if pool.prize_pool.ft_prizes.len() == 0 && pool.prize_pool.nft_prizes.len() == 0 {
             prize_type = PrizeType::No_Prize
-        } else if pool.prize_pool.ft_prizes.len()==0 {
+        } else if pool.prize_pool.ft_prizes.len() == 0 {
             prize_type = PrizeType::NFT
-        } else if pool.prize_pool.nft_prizes.len()==0 {
+        } else if pool.prize_pool.nft_prizes.len() == 0 {
             prize_type = PrizeType::Crypto
         } else {
             prize_type = PrizeType::NFT_Crypto
@@ -64,7 +66,7 @@ impl From<TwitterPool> for TwitterPoolDisplay {
             end_time: pool.end_time,
             twitter_link: pool.twitter_link,
             requirements: pool.requirements,
-            prize_type
+            prize_type,
         }
     }
 }
@@ -109,7 +111,7 @@ pub struct TwitterPool {
     pub create_time: MilliTimeStamp,
     pub update_time: MilliTimeStamp,
     pub white_list: HashSet<AccountId>,
-    pub requirements: String,
+    pub requirements: Option<String>,
     pub twitter_near_bind: HashMap<TwitterAccount, AccountId>,
     pub twitter_link: String,
 }
@@ -170,20 +172,28 @@ impl From<&TwitterPool> for PrizeDrawTime {
 
 #[near_bindgen]
 impl Contract {
-
     pub fn publish_pool(&mut self, pool_id: PoolId) {
         self.internal_creator_use_twitter_pool(
             &pool_id,
-            |pool|{
-               pool.status = PoolStatus::ONGOING;
+            |pool| {
+                pool.status = PoolStatus::ONGOING;
             });
     }
 
     #[private]
     pub(crate) fn internal_creator_use_twitter_pool<F>(&mut self, pool_id: &PoolId, mut f: F)
-    where F: FnMut(&mut TwitterPool) {
+        where F: FnMut(&mut TwitterPool) {
         let mut pool = self.internal_get_twitter_pool(pool_id);
-        assert_eq!(pool.prize_pool.creator_id,env::predecessor_account_id(),"only creator can use pool!");
+        assert_eq!(pool.prize_pool.creator_id, env::predecessor_account_id(), "only creator can use pool!");
+        f(&mut pool);
+        self.internal_save_twitter_pool(pool)
+    }
+
+    #[private]
+    pub(crate) fn internal_creator_remove_twitter_pool<F>(&mut self, pool_id: &PoolId, mut f: F)
+        where F: FnMut(&mut TwitterPool) {
+        let mut pool = self.internal_get_twitter_pool(pool_id);
+        assert_eq!(pool.prize_pool.creator_id, env::predecessor_account_id(), "only creator can use pool!");
         f(&mut pool);
         self.internal_save_twitter_pool(pool)
     }
@@ -223,7 +233,7 @@ impl Contract {
             create_time: get_block_milli_time(),
             update_time: get_block_milli_time(),
             white_list: param.white_list.as_ref().unwrap_or(&vec![]).iter().map(|e| e.clone()).collect(),
-            requirements: param.requirements.as_ref().unwrap_or(&"".to_string()).clone(),
+            requirements: param.requirements.clone(),
             twitter_near_bind: Default::default(),
             twitter_link: param.twitter_link.as_ref().unwrap_or(&"".to_string()).clone(),
         }
@@ -245,10 +255,10 @@ impl Contract {
             pool.prize_pool.nft_prizes = param.nft_prizes.as_ref().unwrap_or(&vec![]).iter().map(|e| NftPrize { nft: e.nft.clone(), prize_id: self.next_id() }).collect_vec();
         }
 
-        if param.end_time.is_some() {pool.end_time = param.end_time.as_ref().unwrap().clone();}
-        if param.white_list.is_some() {pool.white_list = param.white_list.as_ref().unwrap_or(&vec![]).iter().map(|e|e.clone()).collect()}
+        if param.end_time.is_some() { pool.end_time = param.end_time.as_ref().unwrap().clone(); }
+        if param.white_list.is_some() { pool.white_list = param.white_list.as_ref().unwrap_or(&vec![]).iter().map(|e| e.clone()).collect() }
         // if param.requirements.is_some() {pool.requirements = param.requirements.as_ref().unwrap_or(&"".to_string()).clone()}
-        if param.twitter_link.is_some() {pool.twitter_link = param.twitter_link.as_ref().unwrap().clone();}
+        if param.twitter_link.is_some() { pool.twitter_link = param.twitter_link.as_ref().unwrap().clone(); }
         pool.update_time = get_block_milli_time();
         self.internal_save_twitter_pool(pool);
     }
@@ -275,7 +285,7 @@ impl Contract {
     }
 
     #[payable]
-    pub fn update_twitter_pool(&mut self, param: TwitterPoolCreateParam, pool_id: PoolId)-> PoolId {
+    pub fn update_twitter_pool(&mut self, param: TwitterPoolCreateParam, pool_id: PoolId) -> PoolId {
         assert_one_yocto();
         let updater = env::predecessor_account_id();
         let pool = self.internal_get_twitter_pool(&pool_id);
@@ -283,13 +293,13 @@ impl Contract {
 
         let mut account = self.internal_get_account(&updater);
 
-        pool.prize_pool.ft_prizes.iter().map(|e|&e.ft).for_each(|ft|account.assets.deposit_ft(ft));
-        pool.prize_pool.nft_prizes.iter().map(|e|&e.nft).for_each(|nft|account.assets.deposit_nft(nft));
+        pool.prize_pool.ft_prizes.iter().map(|e| &e.ft).for_each(|ft| account.assets.deposit_ft(ft));
+        pool.prize_pool.nft_prizes.iter().map(|e| &e.nft).for_each(|nft| account.assets.deposit_nft(nft));
 
         param.ft_prizes.as_ref().unwrap_or(&vec![]).iter().for_each(|x| account.assets.withdraw_contract_amount(&x.ft.contract_id, &x.ft.balance.0));
         param.nft_prizes.as_ref().unwrap_or(&vec![]).iter().for_each(|x| account.assets.withdraw_nft(&x.nft));
 
-        self.update_twitter_pool_by_create_param(&param,&pool_id);
+        self.update_twitter_pool_by_create_param(&param, &pool_id);
         return pool_id;
     }
 
@@ -328,6 +338,18 @@ impl Contract {
         return self.twitter_prize_pools.values().map(VPool::into_twitter_pool).map_into().collect_vec();
         // return self.twitter_prize_pools.get(&pool_id).expect("inexistent pool id");
     }
+
+    pub fn delete_twitter_prize_pool(&mut self, pool_id: PoolId) {
+        let pool = self.internal_get_twitter_pool(&pool_id);
+        assert_eq!(pool.prize_pool.creator_id, env::predecessor_account_id(), "only creator can remove pool");
+
+        self.internal_use_account(&env::predecessor_account_id(), |account| {
+            pool.prize_pool.ft_prizes.iter().for_each(|ft| account.assets.deposit_ft(&ft.ft));
+            pool.prize_pool.nft_prizes.iter().for_each(|nft| account.assets.deposit_nft(&nft.nft));
+        });
+
+        self.twitter_prize_pools.remove(&pool_id);
+    }
 }
 
 
@@ -338,34 +360,60 @@ mod test_twitter {
     use near_sdk::log;
     use crate::*;
     use crate::asset::Ft;
+    use crate::prize::FtPrizeCreateParam;
     use crate::TwitterPool;
     use crate::tests::setup_contract;
+    use near_sdk::test_utils::{accounts, VMContextBuilder};
+    use near_sdk_sim::lazy_static_include::syn::export::str;
     use crate::twitter_giveaway::TwitterPoolCreateParam;
+
+    #[test]
+    fn test_create_param() {
+        let param = TwitterPoolCreateParam {
+            name: None,
+            describe: None,
+            cover: None,
+            end_time: None,
+            white_list: None,
+            requirements: None,
+            ft_prizes: Some(vec![FtPrizeCreateParam {
+                ft: Ft {
+                    contract_id: "wrap.testnet".to_string(),
+                    balance: U128::from(1000000000000000000000000)
+                }
+            }]),
+            nft_prizes: None,
+            join_accounts: None,
+            twitter_link: None,
+        };
+        let (mut context, mut contract) = setup_contract();
+        contract.internal_deposit_ft(accounts(0).as_ref(),&"wrap.testnet".to_string(),&U128::from(1000000000000000000000000));
+        let id = contract.create_twitter_pool(param);
+        let pool = contract.view_twitter_prize_pool(id);
+        let pool_des = near_sdk::serde_json::to_string(&pool).unwrap();
+        println!("{:?}", pool_des);
+
+
+    }
 
     #[test]
     fn test_create() {
         const CREATE_PARAM_RAW: &str = r#"{
-    "name": "1",
-    "requirements": "[]",
-    "twitter_link": "123",
-    "white_list": [],
-    "cover": "https://justplayproducts.com/wp-content/uploads/2020/06/78550_78551-Ryans-Mystery-Playdate-Mini-Mystery-Boxes-Call-Out-2-scaled-470x470.jpg",
-    "describe": "1",
-    "end_time": 1642919340000,
-    "ft_prizes": [
+"ft_prizes": [
       {
         "ft": {
-          "contract_id": "NEAR",
-          "balance": "00000000000000000000000000"
+          "contract_id": "wrap.testnet",
+          "balance": "1000000000000000000000000"
         }
       }
     ],
-    "join_accounts": null,
     "nft_prizes": []
 }"#;
 
         // tests::setup_contract()
         let (mut context, mut contract) = setup_contract();
+        contract.internal_deposit_ft(accounts(0).as_ref(),&"wrap.testnet".to_string(),&U128::from(1000000000000000000000000));
+
         let param = near_sdk::serde_json::from_str(CREATE_PARAM_RAW).unwrap();
 
         let pool = contract.create_twitter_pool(param);
