@@ -10,7 +10,7 @@ states = os.popen('near view-state prizepool.superise.testnet --finality final')
 print("states:", states)
 
 pattern = re.compile("key: '([^']+)'", )
-state_keys = pattern.findall(states.read())  # ['AAsAAAB4c2IudGVzdG5ldA==', ... ,'U1RBVEU=']
+state_keys = pattern.findall(states)  # ['AAsAAAB4c2IudGVzdG5ldA==', ... ,'U1RBVEU=']
 state_keys_arg = "[" + ",".join(list(map(lambda e: "\"%s\"" % e, state_keys))) + "]" # "[\"AAsAAAB4c2IudGVzdG5ldA==\",\"AmkBAAAAAAAAAA==\",\"AmsAAAAAAAAAAA==\",\"AnYAAAAAAAAAAA==\",\"U1RBVEU=\"]"
 print("states_key_arg:", state_keys_arg)
 

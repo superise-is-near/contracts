@@ -15,7 +15,7 @@ use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::accounts::{Account, VAccount};
 use crate::asset::Assets;
-use crate::prize_pool::{CountDownDrawPrize, DrawPrize, PoolId, PrizeDrawTime, PrizePool, VPool};
+use crate::prize_pool::{CountDownDrawPrize, DrawPrize, PoolId, PrizeDrawTime, PrizePool, Record, VPool};
 use crate::twitter_giveaway::TwitterPool;
 
 mod prize;
@@ -42,6 +42,7 @@ pub(crate) enum StorageKey {
     Accounts,
     PrizePools,
     TwitterPools,
+    Records,
     PrizePoolJoiner {account_id: AccountId},
     AccountFts {account_id: AccountId},
     AccountNfts{account_id: AccountId},
@@ -99,7 +100,8 @@ pub struct Contract {
     pub pool_queue: BinaryHeap<PrizeDrawTime>,
     pub pool_id: u64,
     pub white_list_admin: AccountId,
-    pub admin: AccountId
+    pub admin: AccountId,
+    pub records: LookupMap<PoolId, Record>
 }
 
 
@@ -115,7 +117,8 @@ impl Contract {
             pool_queue: BinaryHeap::new(),
             pool_id: 0,
             white_list_admin: white_list_admin.into(),
-            admin: env::predecessor_account_id()
+            admin: env::predecessor_account_id(),
+            records: LookupMap::new(StorageKey::Records)
         }
     }
 
