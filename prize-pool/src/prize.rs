@@ -8,6 +8,8 @@ use near_sdk::serde::{Serialize,Deserialize};
 
 pub type PrizeId = u64;
 
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
 pub enum Prize {
     NFT_PRIZE(NftPrize),FT_PRIZE(FtPrize)
 }

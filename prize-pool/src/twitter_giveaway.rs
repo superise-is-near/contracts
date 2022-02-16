@@ -114,6 +114,7 @@ pub struct TwitterPool {
     pub requirements: Option<String>,
     pub twitter_near_bind: HashMap<TwitterAccount, AccountId>,
     pub twitter_link: String,
+    pub records: Vec<Record>
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
@@ -172,12 +173,15 @@ impl From<&TwitterPool> for PrizeDrawTime {
 
 #[near_bindgen]
 impl Contract {
+
+    #[payable]
     pub fn publish_pool(&mut self, pool_id: PoolId) {
-        self.internal_creator_use_twitter_pool(
-            &pool_id,
-            |pool| {
-                pool.status = PoolStatus::ONGOING;
-            });
+        assert_one_yocto();
+        let mut pool = self.internal_get_twitter_pool(&pool_id);
+        assert_eq!(pool.status,PoolStatus::PENDING,"only pool in PENDING state can publish");
+        pool.publish();
+        &self.pool_queue.push((&pool).into());
+        self.internal_save_twitter_pool(pool);
     }
 
     #[private]
@@ -236,6 +240,7 @@ impl Contract {
             requirements: param.requirements.clone(),
             twitter_near_bind: Default::default(),
             twitter_link: param.twitter_link.as_ref().unwrap_or(&"".to_string()).clone(),
+            records: vec![]
         }
     }
 
@@ -278,7 +283,6 @@ impl Contract {
         // let pool = TwitterPool::new_by_near_call(&param,&creator_id,(self.next_id)(self));
         let pool = self.new_twitter_pool_by_create_param(&param);
         let pool_id = pool.prize_pool.id.clone();
-        self.pool_queue.push((&pool).into());
         self.internal_save_twitter_pool(pool);
         // self.twitter_prize_pools.insert(&pool.prize_pool.id, &pool.into());
         return pool_id;
@@ -308,8 +312,11 @@ impl Contract {
         assert_eq!(pool.status, PoolStatus::ONGOING, "pool can only join in ongoing status");
         let joiner = env::predecessor_account_id();
         assert!(pool.white_list.contains(&joiner), "you are not in whitelist");
-        pool.prize_pool.join_accounts.insert(joiner);
+        self.internal_use_account(
+            &joiner,
+            |account|{account.pools.insert(pool_id.clone());});
         // self.twitter_prize_pools.insert(&pool.prize_pool.id, &pool);
+        pool.prize_pool.join_accounts.insert(joiner);
         self.internal_save_twitter_pool(pool);
     }
 

@@ -18,7 +18,14 @@ use itertools::Itertools;
 use std::panic::catch_unwind;
 use near_sdk::env::log;
 use crate::asset::{ContractId, NftId};
+use crate::twitter_giveaway::TwitterPoolDisplay;
 
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub struct AccountPrizePoolHistory {
+    pool: TwitterPoolDisplay,
+    records: Vec<Record>,
+}
 
 #[derive(BorshDeserialize, BorshSerialize)]
 pub enum VAccount {
@@ -222,6 +229,21 @@ impl Contract {
     pub fn view_account_assets(&self, account_id: ValidAccountId) -> AssetsDTO {
         return self.internal_get_account(account_id.as_ref())
             .assets.into();
+    }
+
+    pub fn view_account_prizepool_history(&self, account_id: ValidAccountId)->Vec<AccountPrizePoolHistory> {
+        let account = self.internal_get_account(account_id.as_ref());
+        account.pools.iter()
+            .map(|pool_id|{
+                let pool = self.internal_get_twitter_pool(pool_id);
+                AccountPrizePoolHistory{
+                    records: pool.records.iter()
+                        .filter(|&record|record.receiver.eq(account_id.as_ref()))
+                        .map(|e|e.clone())
+                        .collect_vec(),
+                    pool: pool.into(),
+                }
+            }).collect_vec()
     }
 
     pub(crate) fn internal_use_account<F>(&mut self, account_id: &AccountId, mut f: F)

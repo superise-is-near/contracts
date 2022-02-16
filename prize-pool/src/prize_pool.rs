@@ -25,7 +25,7 @@ pub enum VPool {
 }
 
 impl VPool {
-    pub fn into_twitter_pool(self)->TwitterPool {
+    pub fn into_twitter_pool(self) -> TwitterPool {
         match self { VPool::TwitterPool(pool) => pool }
     }
 }
@@ -34,25 +34,27 @@ impl VPool {
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub enum PoolStatus {
-    PENDING, // create but not publish
-    ONGOING, // after published
+    PENDING,
+    // create but not publish
+    ONGOING,
+    // after published
     FINISHED,
-    DELETED
+    DELETED,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Copy)]
 #[serde(crate = "near_sdk::serde")]
-pub struct PrizeDrawTime(pub MilliTimeStamp,pub PoolId);
+pub struct PrizeDrawTime(pub MilliTimeStamp, pub PoolId);
 
 impl Eq for PrizeDrawTime {}
 
-impl PartialEq<Self> for PrizeDrawTime{
+impl PartialEq<Self> for PrizeDrawTime {
     fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)&&self.1.eq(&other.1)
+        self.0.eq(&other.0) && self.1.eq(&other.1)
     }
 }
 
-impl PartialOrd<Self> for PrizeDrawTime{
+impl PartialOrd<Self> for PrizeDrawTime {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
@@ -64,12 +66,13 @@ impl Ord for PrizeDrawTime {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Record {
-    time: MilliTimeStamp,
-    ft_prize: FtPrize,
-    receiver: AccountId,
+    pub time: MilliTimeStamp,
+    pub ft_prize: Option<FtPrize>,
+    pub nft_prize: Option<NftPrize>,
+    pub receiver: AccountId,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
@@ -83,11 +86,11 @@ pub struct PrizePool {
 }
 
 pub trait CountDownDrawPrize {
-    fn draw_prize_time(&self)->MilliTimeStamp;
+    fn draw_prize_time(&self) -> MilliTimeStamp;
 }
 
 pub trait DrawPrize {
-   fn draw_prize(&self)-> HashMap<AccountId, Vec<Prize>>;
+    fn draw_prize(&self) -> HashMap<AccountId, Vec<Prize>>;
 }
 
 impl PrizePool {
@@ -118,7 +121,7 @@ pub fn random_distribution_prizes(ft_prizes: &Vec<FtPrize>,
         let prize = if prize_index < ft_prizes.len() {
             Prize::FT_PRIZE(ft_prizes[prize_index].clone())
         } else {
-            Prize::NFT_PRIZE(nft_prizes[prize_index-ft_prizes.len()].clone())
+            Prize::NFT_PRIZE(nft_prizes[prize_index - ft_prizes.len()].clone())
         };
         result.entry(receiver.clone()).or_insert(vec![]).push(prize)
     };
@@ -140,22 +143,35 @@ impl Contract {
 
     #[private]
     fn prize_draw(&mut self, pool_id: PoolId) {
-        let mut pool =self.internal_get_twitter_pool(&pool_id);
+        let mut pool = self.internal_get_twitter_pool(&pool_id);
         // 1. check time
         let time_now = get_block_milli_time();
         assert!(pool.end_time <= time_now, "pool end_time ({}) is before block_timestamp({})", pool.end_time, time_now);
         // 2. internal transfer prize to user
         let user_prize_map = pool.draw_prize();
         user_prize_map.iter()
-            .for_each(|(account_id,prizes)|{
+            .for_each(|(account_id, prizes)| {
                 let mut account = self.internal_get_account(&account_id);
-                prizes.iter().for_each(|prize|{
+                prizes.iter().for_each(|prize| {
+                    let mut record = Record{
+                        time: get_block_milli_time(),
+                        ft_prize: None,
+                        nft_prize: None,
+                        receiver: account_id.clone()
+                    };
                     match prize {
-                        Prize::NFT_PRIZE(nft_prize) => {account.assets.deposit_nft(&nft_prize.nft)}
-                        Prize::FT_PRIZE(ft_prize) => {account.assets.deposit_ft(&ft_prize.ft)}
+                        Prize::NFT_PRIZE(nft_prize) => {
+                            account.assets.deposit_nft(&nft_prize.nft);
+                            record.nft_prize = Some(nft_prize.clone());
+                        }
+                        Prize::FT_PRIZE(ft_prize) => {
+                            account.assets.deposit_ft(&ft_prize.ft);
+                            record.ft_prize = Some(ft_prize.clone());
+                        }
                     }
+                    pool.records.push(record);
                 });
-                self.internal_save_account(&account_id,account);
+                self.internal_save_account(&account_id, account);
             });
 
         pool.status = PoolStatus::FINISHED;
@@ -169,7 +185,7 @@ impl Contract {
 
     pub fn view_prize_pool_queue(&self) -> Vec<PrizeDrawTime> {
         // return self.pool_queue.into_iter().collect_vec();
-        return self.pool_queue.iter().map(|e|e.clone()).collect_vec();
+        return self.pool_queue.iter().map(|e| e.clone()).collect_vec();
     }
 
     // 访问是否有开奖的奖池
@@ -181,9 +197,74 @@ impl Contract {
             // 只有存在的奖池才会继续
             match self.twitter_prize_pools.get(&pool.1) {
                 None => {}
-                Some(twitter_pool) => { self.prize_draw(pool.1) }
+                Some(_) => { self.prize_draw(pool.1) }
             }
         }
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg(test)]
+mod test_twitter {
+    use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+    use near_sdk::log;
+    use crate::*;
+    use crate::asset::Ft;
+    use crate::prize::{FtPrize, FtPrizeCreateParam, Prize};
+    use crate::TwitterPool;
+    use crate::tests::setup_contract;
+    use near_sdk::test_utils::{accounts, VMContextBuilder};
+    use near_sdk_sim::lazy_static_include::syn::export::str;
+    use crate::twitter_giveaway::TwitterPoolCreateParam;
+
+    #[test]
+    fn test_create_param() {
+        let param = TwitterPoolCreateParam {
+            name: None,
+            describe: None,
+            cover: None,
+            end_time: None,
+            white_list: None,
+            requirements: None,
+            ft_prizes: Some(vec![FtPrizeCreateParam {
+                ft: Ft {
+                    contract_id: "wrap.testnet".to_string(),
+                    balance: U128::from(1000000000000000000000000),
+                }
+            }]),
+            nft_prizes: None,
+            join_accounts: None,
+            twitter_link: None,
+        };
+        let (mut context, mut contract) = setup_contract();
+        contract.internal_deposit_ft(accounts(0).as_ref(), &"wrap.testnet".to_string(), &U128::from(1000000000000000000000000));
+        let id = contract.create_twitter_pool(param);
+        let pool = contract.view_twitter_prize_pool(id);
+        let pool_des = near_sdk::serde_json::to_string(&pool).unwrap();
+        println!("{:?}", pool_des);
+    }
+
+    #[test]
+    fn test_create() {
+        const CREATE_PARAM_RAW: &str = r#"{
+"ft_prizes": [
+      {
+        "ft": {
+          "contract_id": "wrap.testnet",
+          "balance": "1000000000000000000000000"
+        }
+      }
+    ],
+    "nft_prizes": []
+}"#;
+
+        // tests::setup_contract()
+        let (mut context, mut contract) = setup_contract();
+        contract.internal_deposit_ft(accounts(0).as_ref(), &"wrap.testnet".to_string(), &U128::from(1000000000000000000000000));
+
+        let param = near_sdk::serde_json::from_str(CREATE_PARAM_RAW).unwrap();
+
+        let pool = contract.create_twitter_pool(param);
+        println!("{:?}", pool)
+    }
+}
