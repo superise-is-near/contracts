@@ -188,8 +188,15 @@ impl Contract {
         return self.pool_queue.iter().map(|e| e.clone()).collect_vec();
     }
 
-    // 访问是否有开奖的奖池
-    pub fn touch_pools(&mut self) {
+    // 查询是否有可以开奖的奖池
+    pub fn view_exist_drawable_pool(&self)->bool {
+        return if
+        self.pool_queue.peek().is_some() && self.pool_queue.peek().unwrap().0 <= get_block_milli_time()
+        { true } else { false }
+    }
+
+    // 开奖
+    pub fn pools_prize_draw(&mut self) {
         log!("block time is {}",get_block_milli_time());
         while !self.pool_queue.is_empty() && self.pool_queue.peek().unwrap().0 <= get_block_milli_time() {
             let pool = self.pool_queue.pop().unwrap();
