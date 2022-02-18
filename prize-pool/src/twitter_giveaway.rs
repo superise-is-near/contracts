@@ -262,7 +262,7 @@ impl Contract {
 
         if param.end_time.is_some() { pool.end_time = param.end_time.as_ref().unwrap().clone(); }
         if param.white_list.is_some() { pool.white_list = param.white_list.as_ref().unwrap_or(&vec![]).iter().map(|e| e.clone()).collect() }
-        // if param.requirements.is_some() {pool.requirements = param.requirements.as_ref().unwrap_or(&"".to_string()).clone()}
+        if param.requirements.is_some() {pool.requirements = Some(param.requirements.as_ref().unwrap_or(&"{}".to_string()).clone())}
         if param.twitter_link.is_some() { pool.twitter_link = param.twitter_link.as_ref().unwrap().clone(); }
         pool.update_time = get_block_milli_time();
         self.internal_save_twitter_pool(pool);
@@ -311,6 +311,7 @@ impl Contract {
         let mut pool = self.internal_get_twitter_pool(&pool_id);//self.twitter_prize_pools.get(&pool_id).expect(&format!("no such pool,id:{}", pool_id));
         assert_eq!(pool.status, PoolStatus::ONGOING, "pool can only join in ongoing status");
         let joiner = env::predecessor_account_id();
+        // check if whitelist contains account
         assert!(pool.white_list.contains(&joiner), "you are not in whitelist");
         self.internal_use_account(
             &joiner,
