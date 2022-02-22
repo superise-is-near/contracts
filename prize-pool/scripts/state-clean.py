@@ -6,7 +6,9 @@ import sys
 contract_name = sys.argv[1]
 account_name = sys.argv[2]
 
-states = os.popen('near view-state prizepool.superise.testnet --finality final').read()
+NODE_URL = 'https://public-rpc.blockpi.io/http/near-testnet'
+
+states = os.popen('near view-state prizepool.superise.testnet --finality final --node_url %s' % NODE_URL).read()
 print("states:", states)
 
 pattern = re.compile("key: '([^']+)'", )
@@ -14,7 +16,7 @@ state_keys = pattern.findall(states)  # ['AAsAAAB4c2IudGVzdG5ldA==', ... ,'U1RBV
 state_keys_arg = "[" + ",".join(list(map(lambda e: "\"%s\"" % e, state_keys))) + "]" # "[\"AAsAAAB4c2IudGVzdG5ldA==\",\"AmkBAAAAAAAAAA==\",\"AmsAAAAAAAAAAA==\",\"AnYAAAAAAAAAAA==\",\"U1RBVEU=\"]"
 print("states_key_arg:", state_keys_arg)
 
-cmd = "near call %s clean \'{\"keys\": %s}\' --accountId %s" % (contract_name, state_keys_arg, account_name)
+cmd = "near call %s clean \'{\"keys\": %s}\' --accountId %s --gas 300000000000000 --node_url %s" % (contract_name, state_keys_arg, account_name, NODE_URL)
 print("execute: "+cmd)
 
 result = os.popen(cmd)
