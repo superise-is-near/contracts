@@ -97,7 +97,7 @@ pub struct Contract {
     pub accounts: LookupMap<AccountId, VAccount>,
     // pub prize_pools: UnorderedMap<PoolId,PrizePool>,
     pub twitter_prize_pools: UnorderedMap<PoolId, VPool>,
-    pub pool_queue: BinaryHeap<PrizeDrawTime>,
+    pub pool_queue: Vec<PrizeDrawTime>,// BinaryHeap<PrizeDrawTime> someday,it didn't work
     pub pool_id: u64,
     pub white_list_admin: AccountId,
     pub admin: AccountId,
@@ -114,7 +114,7 @@ impl Contract {
             accounts: LookupMap::new(StorageKey::Accounts),
             // prize_pools: UnorderedMap::new(StorageKey::PrizePools),
             twitter_prize_pools: UnorderedMap::new(StorageKey::TwitterPools),
-            pool_queue: BinaryHeap::new(),
+            pool_queue: vec![],
             pool_id: 0,
             white_list_admin: white_list_admin.into(),
             admin: env::predecessor_account_id(),

@@ -42,9 +42,9 @@ pub enum PoolStatus {
     DELETED,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Copy)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone,Debug )]
 #[serde(crate = "near_sdk::serde")]
-pub struct PrizeDrawTime(pub MilliTimeStamp, pub PoolId);
+pub struct PrizeDrawTime(pub PoolId, pub MilliTimeStamp);
 
 impl Eq for PrizeDrawTime {}
 
@@ -183,6 +183,12 @@ impl Contract {
     //     self.prize_pools.get(&pool_id.into()).expect("nonexistent pool id")
     // }
 
+    pub fn add_random_into_prize_pool_queue(&mut self) {}
+
+    pub fn view_prize_pool_queue_len(&self) -> usize {
+        return self.pool_queue.len();
+    }
+
     pub fn view_prize_pool_queue(&self) -> Vec<PrizeDrawTime> {
         // return self.pool_queue.into_iter().collect_vec();
         return self.pool_queue.iter().map(|e| e.clone()).collect_vec();
@@ -190,23 +196,36 @@ impl Contract {
 
     // 查询是否有可以开奖的奖池
     pub fn view_exist_drawable_pool(&self)->bool {
-        return if
-        self.pool_queue.peek().is_some() && self.pool_queue.peek().unwrap().0 <= get_block_milli_time()
-        { true } else { false }
+        // return if
+        // self.pool_queue.peek().is_some() && self.pool_queue.peek().unwrap().0 <= get_block_milli_time()
+        // { true } else { false }
+        return self.pool_queue.iter().any(|e|e.1<=get_block_milli_time())
     }
 
     // 开奖
     pub fn pools_prize_draw(&mut self) {
         log!("block time is {}",get_block_milli_time());
-        while !self.pool_queue.is_empty() && self.pool_queue.peek().unwrap().0 <= get_block_milli_time() {
-            let pool = self.pool_queue.pop().unwrap();
-            log!("pool {} start prize_draw at block_time: {}",pool.1, get_block_milli_time());
-            // 只有存在的奖池才会继续
-            match self.twitter_prize_pools.get(&pool.1) {
-                None => {}
-                Some(_) => { self.prize_draw(pool.1) }
+        let queue = self.pool_queue.clone();
+        let mut new_queue: Vec<PrizeDrawTime> = vec![];
+        for e in queue {
+            if e.1<=get_block_milli_time() {
+                self.prize_draw(e.0.clone());
+            } else {
+                new_queue.push(e.clone());
             }
         }
+        self.pool_queue = new_queue;
+
+        // log!("block time is {}",get_block_milli_time());
+        // while !self.pool_queue.is_empty() && self.pool_queue.peek().unwrap().0 <= get_block_milli_time() {
+        //     let pool = self.pool_queue.pop().unwrap();
+        //     log!("pool {} start prize_draw at block_time: {}",pool.1, get_block_milli_time());
+        //     // 只有存在的奖池才会继续
+        //     match self.twitter_prize_pools.get(&pool.1) {
+        //         None => {}
+        //         Some(_) => { self.prize_draw(pool.1) }
+        //     }
+        // }
     }
 }
 
@@ -223,6 +242,19 @@ mod test_twitter {
     use near_sdk::test_utils::{accounts, VMContextBuilder};
     use near_sdk_sim::lazy_static_include::syn::export::str;
     use crate::twitter_giveaway::TwitterPoolCreateParam;
+
+    #[test]
+    fn test_queue() {
+        let (mut context, mut contract) = setup_contract();
+        // contract.pool_queue.push(PrizeDrawTime{ 0:1645290540000, 1: 1 });
+        // contract.pool_queue.push(PrizeDrawTime{ 0:1645290540000, 1: 3 });
+        // contract.pool_queue.push(PrizeDrawTime{ 0:1645207500000, 1: 5 });
+        while !contract.pool_queue.is_empty() {
+            println!("{:?}",contract.pool_queue.pop());
+        }
+
+
+    }
 
     #[test]
     fn test_create_param() {

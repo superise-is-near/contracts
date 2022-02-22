@@ -167,7 +167,7 @@ impl DrawPrize for TwitterPool {
 
 impl From<&TwitterPool> for PrizeDrawTime {
     fn from(pool: &TwitterPool) -> Self {
-        return PrizeDrawTime(pool.end_time.clone(), pool.prize_pool.id.clone());
+        return PrizeDrawTime( pool.prize_pool.id.clone(),pool.end_time.clone());
     }
 }
 
@@ -180,8 +180,9 @@ impl Contract {
         let mut pool = self.internal_get_twitter_pool(&pool_id);
         assert_eq!(pool.status,PoolStatus::PENDING,"only pool in PENDING state can publish");
         pool.publish();
-        &self.pool_queue.push((&pool).into());
+        self.pool_queue.push(PrizeDrawTime { 0: pool_id.clone(), 1: (&pool).end_time.clone() });
         self.internal_save_twitter_pool(pool);
+        log!("{:?}", self.view_prize_pool_queue());
     }
 
     #[private]
@@ -217,13 +218,13 @@ impl Contract {
     }
 
     #[private]
-    fn new_twitter_pool_by_create_param(&mut self, param: &TwitterPoolCreateParam) -> TwitterPool {
+    fn new_twitter_pool_by_create_param(&mut self,pool_id: &PoolId, param: &TwitterPoolCreateParam) -> TwitterPool {
         TwitterPool {
             name: param.name.as_ref().unwrap_or(&"".to_string()).clone(),
             describe: param.describe.as_ref().unwrap_or(&"".to_string()).clone(),
             cover: param.cover.as_ref().unwrap_or(&"".to_string()).clone(),
             prize_pool: PrizePool {
-                id: self.next_id(),
+                id: pool_id.clone(),
                 creator_id: env::predecessor_account_id(),
                 ft_prizes: param.ft_prizes.as_ref().unwrap_or(&vec![]).iter().map(|e| FtPrize {
                     ft: Ft { contract_id: e.ft.contract_id.clone(), balance: e.ft.balance },
@@ -272,17 +273,18 @@ impl Contract {
     pub fn create_twitter_pool(&mut self, param: TwitterPoolCreateParam) -> PoolId {
         assert_one_yocto();
         let creator_id = env::predecessor_account_id();
+        let pool_id = self.next_id();
         // todo user should register first
         self.internal_use_account(
             &creator_id,
             |account| {
                 param.ft_prizes.as_ref().unwrap_or(&vec![]).iter().for_each(|x| account.assets.withdraw_contract_amount(&x.ft.contract_id, &x.ft.balance.0));
                 param.nft_prizes.as_ref().unwrap_or(&vec![]).iter().for_each(|x| account.assets.withdraw_nft(&x.nft));
+                account.pools.insert((&pool_id).clone());
             });
 
         // let pool = TwitterPool::new_by_near_call(&param,&creator_id,(self.next_id)(self));
-        let pool = self.new_twitter_pool_by_create_param(&param);
-        let pool_id = pool.prize_pool.id.clone();
+        let pool = self.new_twitter_pool_by_create_param(&pool_id, &param);
         self.internal_save_twitter_pool(pool);
         // self.twitter_prize_pools.insert(&pool.prize_pool.id, &pool.into());
         return pool_id;
@@ -381,7 +383,7 @@ mod test_twitter {
             name: None,
             describe: None,
             cover: None,
-            end_time: None,
+            end_time: Some(1),
             white_list: None,
             requirements: None,
             ft_prizes: Some(vec![FtPrizeCreateParam {
@@ -399,7 +401,8 @@ mod test_twitter {
         let id = contract.create_twitter_pool(param);
         let pool = contract.view_twitter_prize_pool(id);
         let pool_des = near_sdk::serde_json::to_string(&pool).unwrap();
-        println!("{:?}", pool_des);
+        contract.publish_pool(id);
+        println!("{:?}", contract.view_prize_pool_queue());
 
 
     }
@@ -424,7 +427,8 @@ mod test_twitter {
 
         let param = near_sdk::serde_json::from_str(CREATE_PARAM_RAW).unwrap();
 
-        let pool = contract.create_twitter_pool(param);
-        println!("{:?}", pool)
+        let pool_id = contract.create_twitter_pool(param);
+        contract.publish_pool(pool_id);
+        println!("{:?}", contract.view_prize_pool_queue())
     }
 }
