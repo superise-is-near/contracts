@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "./assets",
     "./prize-pool",
     "./test-token"
 ]
