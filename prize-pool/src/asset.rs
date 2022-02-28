@@ -15,7 +15,7 @@ pub enum Asset {
     Nft(Nft),
 }
 
-#[derive(BorshDeserialize, BorshSerialize,Debug,Serialize,Deserialize,Clone)]
+#[derive(BorshDeserialize, BorshSerialize,Debug,Serialize,Deserialize,Clone,PartialEq)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Ft {
     pub contract_id: String,

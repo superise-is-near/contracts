@@ -18,12 +18,12 @@ use crate::asset::Assets;
 use crate::prize_pool::{CountDownDrawPrize, DrawPrize, PoolId, PrizeDrawTime, PrizePool, Record, VPool};
 use crate::twitter_giveaway::TwitterPool;
 
-mod prize;
-mod prize_pool;
-mod accounts;
-mod utils;
-mod asset;
-mod twitter_giveaway;
+pub mod prize;
+pub mod prize_pool;
+pub mod accounts;
+pub mod utils;
+pub mod asset;
+pub mod twitter_giveaway;
 
 near_sdk::setup_alloc!();
 
